@@ -1,16 +1,35 @@
-# Compiled class file
+# Compiled classes
 *.class
 
-# Log file
-*.log
+# Gradle
+.gradle/
+build/
 
-# BlueJ files
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse / BlueJ
+.classpath
+.project
+.settings/
+bin/
 *.ctxt
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# VS Code
+.vscode/
 
-# Package Files #
+# Logs
+*.log
+
+# BlueJ
+*.mtj
+*.tmp
+
+# Archives
 *.jar
 *.war
 *.nar
@@ -19,6 +38,16 @@
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# Keep the Gradle wrapper JAR tracked despite the archive rules
+!gradle/wrapper/gradle-wrapper.jar
+
+# macOS
+.DS_Store
+
+# Local Minecraft test servers
+run/
+server/
+
+# Virtual machine crash logs
 hs_err_pid*
 replay_pid*

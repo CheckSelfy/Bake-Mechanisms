@@ -1,2 +1,9 @@
 # Bake-Mechanisms
-Minecraft plugin that replaces laggy farms with a lightweight black-box simulation: profile, freeze, emulate.
+
+Серверный плагин для Paper 26.3, который снижает нагрузку от автоферм без входных ресурсов: профилирует производство предметов, заменяет исходный механизм заполнителем и эмулирует его выход.
+
+## Документация
+
+- [Спецификация MVP](.scratch/bake-mechanisms-mvp/spec.md) — область, жизненный цикл, настройки, ограничения и сценарии проверки.
+- [Глоссарий](GLOSSARY.md) — канонические термины проекта.
+- [ADR-0001](docs/adr/0001-replace-farms-with-snapshots-and-fillers.md) — архитектурное решение о снимках и заполнителях.
