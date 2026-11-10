@@ -1,5 +1,6 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
+import io.github.checkselfy.bakemechanisms.profiling.ProductionProfile;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,10 +11,17 @@ import java.util.UUID;
 public final class FarmRegistry {
     public static final long DEFAULT_MAX_VOLUME = 262_144;
 
-    public enum State { NEEDS_PROFILING }
+    public enum State { NEEDS_PROFILING, PROFILING, READY }
 
+    /** @param profile valid production profile; present only in {@link State#READY} */
     public record MarkedFarm(UUID id, UUID creatorId, Cuboid mechanism,
-                             OutputContainer output, State state) {}
+                             OutputContainer output, State state, ProductionProfile profile) {
+        public MarkedFarm {
+            if ((state == State.READY) != (profile != null)) {
+                throw new IllegalArgumentException("Профиль хранится только в состоянии READY.");
+            }
+        }
+    }
 
     private final long maxVolume;
     private final Map<UUID, MarkedFarm> farms = new LinkedHashMap<>();
@@ -54,7 +62,7 @@ public final class FarmRegistry {
                 throw new IllegalArgumentException("Механизм включает выходной контейнер другой фермы.");
             }
         }
-        var farm = new MarkedFarm(UUID.randomUUID(), creatorId, mechanism, output, State.NEEDS_PROFILING);
+        var farm = new MarkedFarm(UUID.randomUUID(), creatorId, mechanism, output, State.NEEDS_PROFILING, null);
         farms.put(farm.id(), farm);
         return farm;
     }
@@ -67,6 +75,27 @@ public final class FarmRegistry {
             throw new IllegalArgumentException("Управлять фермой может только её создатель.");
         }
         return farm;
+    }
+
+    public MarkedFarm markProfiling(UUID farmId) {
+        return replace(farmId, State.PROFILING, null);
+    }
+
+    public MarkedFarm markReady(UUID farmId, ProductionProfile profile) {
+        return replace(farmId, State.READY, Objects.requireNonNull(profile, "profile"));
+    }
+
+    /** Drops any previous profile: it must never be reused. */
+    public MarkedFarm markNeedsProfiling(UUID farmId) {
+        return replace(farmId, State.NEEDS_PROFILING, null);
+    }
+
+    private MarkedFarm replace(UUID farmId, State state, ProductionProfile profile) {
+        var farm = farms.get(Objects.requireNonNull(farmId, "farmId"));
+        if (farm == null) throw new IllegalArgumentException("Ферма не найдена.");
+        var updated = new MarkedFarm(farm.id(), farm.creatorId(), farm.mechanism(), farm.output(), state, profile);
+        farms.put(farmId, updated);
+        return updated;
     }
 
     public List<MarkedFarm> findByCreator(UUID creatorId) {

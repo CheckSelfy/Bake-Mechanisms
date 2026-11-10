@@ -1,5 +1,7 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -28,11 +30,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
-    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "clear");
-    private static final String HELP = "/bake wand | output | register | list | info <UUID> | clear";
+    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "profile", "cancel", "clear");
+    private static final List<String> FARM_COMMANDS = List.of("info", "profile", "cancel");
+    private static final String HELP =
+            "/bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID> | clear";
     private final JavaPlugin plugin;
     private final FarmRegistry registry;
     private final PaperOutputResolver outputs;
+    private final ProfilingService profiling;
     private final NamespacedKey wandKey;
     private final Map<UUID, Selection> selections = new HashMap<>();
 
@@ -41,10 +46,12 @@ public final class MarkingController implements Listener, TabExecutor {
         private Selection() { this(null, null, null, null); }
     }
 
-    public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs) {
+    public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
+                             ProfilingService profiling) {
         this.plugin = plugin;
         this.registry = registry;
         this.outputs = outputs;
+        this.profiling = profiling;
         this.wandKey = new NamespacedKey(plugin, "marking_wand");
     }
 
@@ -60,7 +67,7 @@ public final class MarkingController implements Listener, TabExecutor {
                 return true;
             }
             String operation = args[0].toLowerCase(Locale.ROOT);
-            if (args.length != (operation.equals("info") ? 2 : 1)) {
+            if (args.length != (FARM_COMMANDS.contains(operation) ? 2 : 1)) {
                 player.sendMessage(HELP);
                 return true;
             }
@@ -78,6 +85,19 @@ public final class MarkingController implements Listener, TabExecutor {
                     for (var farm : farms) show(player, farm);
                 }
                 case "info" -> show(player, registry.requireCreator(parseId(args[1]), player.getUniqueId()));
+                case "profile" -> {
+                    var id = parseId(args[1]);
+                    profiling.start(id, player.getUniqueId());
+                    player.sendMessage("Профилирование запущено на " + ProfilingSettings.DURATION_TICKS
+                            + " тиков. Область и выходной контейнер защищены до завершения.");
+                    show(player, registry.requireCreator(id, player.getUniqueId()));
+                }
+                case "cancel" -> {
+                    var id = parseId(args[1]);
+                    profiling.cancel(id, player.getUniqueId());
+                    player.sendMessage("Профилирование отменено, механизм не изменён.");
+                    show(player, registry.requireCreator(id, player.getUniqueId()));
+                }
                 case "clear" -> {
                     selections.remove(player.getUniqueId());
                     player.sendMessage("Текущее выделение очищено.");
@@ -184,6 +204,16 @@ public final class MarkingController implements Listener, TabExecutor {
         player.sendMessage("Ферма " + farm.id() + " | " + farm.state() + " | "
                 + coordinates(farm.mechanism().min()) + " → " + coordinates(farm.mechanism().max())
                 + " | выход: " + farm.output().type());
+        if (farm.profile() != null) {
+            var rates = new StringBuilder();
+            farm.profile().ratesPer20Ticks().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(rate -> rates.append(rates.isEmpty() ? "" : ", ")
+                            .append(rate.getKey().getKey().getKey()).append(": ")
+                            .append(String.format(Locale.ROOT, "%.4f", rate.getValue())));
+            player.sendMessage("Профиль (предметов / 20 тиков, полезный участок " + farm.profile().usefulTicks()
+                    + " тиков): " + rates);
+        }
     }
 
     private static String coordinates(BlockPosition block) {
@@ -212,7 +242,7 @@ public final class MarkingController implements Listener, TabExecutor {
             var prefix = args[0].toLowerCase(Locale.ROOT);
             return COMMANDS.stream().filter(value -> value.startsWith(prefix)).toList();
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("info")) {
+        if (args.length == 2 && FARM_COMMANDS.contains(args[0].toLowerCase(Locale.ROOT))) {
             return registry.findByCreator(player.getUniqueId()).stream().map(farm -> farm.id().toString())
                     .filter(id -> id.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         }

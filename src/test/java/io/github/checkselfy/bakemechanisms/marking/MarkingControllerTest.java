@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Material;
@@ -61,7 +62,7 @@ class MarkingControllerTest {
         when(meta.getPersistentDataContainer()).thenReturn(pdc);
         when(pdc.get(new NamespacedKey("bakemechanisms", "marking_wand"), PersistentDataType.BYTE))
                 .thenReturn((byte) 1);
-        controller = new MarkingController(plugin, registry, outputs);
+        controller = new MarkingController(plugin, registry, outputs, mock(ProfilingService.class));
     }
 
     @Test
