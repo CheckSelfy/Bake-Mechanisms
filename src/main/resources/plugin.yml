@@ -3,3 +3,8 @@ version: '${version}'
 main: io.github.checkselfy.bakemechanisms.BakeMechanismsPlugin
 api-version: '26.3'
 description: Profiles and emulates resource-producing farms.
+commands:
+  bake:
+    description: Разметка автоферм и просмотр их состояния.
+    usage: /bake wand | output | register | list | info <UUID> | clear
+    aliases: [bm]
