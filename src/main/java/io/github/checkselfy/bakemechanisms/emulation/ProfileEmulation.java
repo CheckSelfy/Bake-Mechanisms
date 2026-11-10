@@ -27,11 +27,31 @@ public final class ProfileEmulation {
     private final Map<Material, Integer> buffer = new EnumMap<>(Material.class);
 
     public ProfileEmulation(ProductionProfile profile) {
+        this(profile, new EmulationState(Map.of(), Map.of()));
+    }
+
+    /**
+     * Continues from a saved {@link #state()}.
+     *
+     * @throws IllegalArgumentException when the state holds item types the profile does not produce
+     */
+    public ProfileEmulation(ProductionProfile profile, EmulationState state) {
         Objects.requireNonNull(profile, "profile");
+        Objects.requireNonNull(state, "state");
         profile.ratesPer20Ticks().forEach((type, rate) -> {
             rates.put(type, BigDecimal.valueOf(rate));
-            fractions.put(type, BigDecimal.ZERO);
+            fractions.put(type, state.fractions().getOrDefault(type, BigDecimal.ZERO));
         });
+        if (!rates.keySet().containsAll(state.fractions().keySet())
+                || !rates.keySet().containsAll(state.buffer().keySet())) {
+            throw new IllegalArgumentException("Состояние эмуляции не соответствует профилю.");
+        }
+        buffer.putAll(state.buffer());
+    }
+
+    /** Snapshot for persistence; restoring it with the same profile continues production exactly. */
+    public EmulationState state() {
+        return new EmulationState(fractions, buffer);
     }
 
     /**

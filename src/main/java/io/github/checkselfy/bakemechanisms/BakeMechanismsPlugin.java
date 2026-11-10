@@ -11,7 +11,10 @@ import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
+import io.github.checkselfy.bakemechanisms.storage.FarmStorage;
+import java.io.UncheckedIOException;
 import java.util.Objects;
+import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class BakeMechanismsPlugin extends JavaPlugin {
@@ -43,7 +46,31 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        var registry = new FarmRegistry(maxVolume);
+        var storage = new FarmStorage(getDataFolder().toPath().resolve("farms"));
+        var registry = new FarmRegistry(maxVolume, farm -> {
+            try {
+                storage.save(farm);
+            } catch (UncheckedIOException error) {
+                getLogger().log(Level.SEVERE, "Failed to save farm " + farm.id(), error);
+            }
+        });
+        try {
+            for (var stored : storage.loadAll()) {
+                var saved = stored.farm();
+                var restored = registry.restore(saved);
+                if (restored.state() != saved.state()) {
+                    getLogger().info("Farm " + saved.id() + ": unfinished profiling cancelled by restart, now "
+                            + restored.state() + ".");
+                }
+            }
+        } catch (IllegalStateException | IllegalArgumentException | UncheckedIOException error) {
+            // Never start over a partial load: saving would overwrite farms that failed to load.
+            getLogger().log(Level.SEVERE, "Failed to load farms; plugin disabled. Fix or move the data and restart.",
+                    error);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        getLogger().info("Loaded " + registry.all().size() + " farm(s).");
         var resolver = new PaperOutputResolver();
         var paperWorld = new PaperProfilingWorld(this, resolver);
         var tickets = new ChunkTickets(paperWorld);

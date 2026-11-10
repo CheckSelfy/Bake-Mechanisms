@@ -3,6 +3,7 @@ package io.github.checkselfy.bakemechanisms.emulation;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.github.checkselfy.bakemechanisms.profiling.ProductionProfile;
+import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.Map;
 import org.bukkit.Material;
@@ -18,6 +19,34 @@ class ProfileEmulationTest {
         assertEquals(Map.of(), output.items);
         emulation.update(20, output);
         assertEquals(Map.of(Material.COBBLESTONE, 1), output.items);
+    }
+
+    @Test
+    void restoredStateContinuesWithoutResettingOrRecreditingOutput() {
+        var profile = new ProductionProfile(Map.of(Material.KELP, 0.7, Material.BAMBOO, 3.0), 3600);
+        var original = new ProfileEmulation(profile);
+        output.capacity.put(Material.BAMBOO, 2);
+        original.update(20, output); // kelp 0.7 accumulated, bamboo 1 waits in the buffer
+        var saved = original.state();
+        assertEquals(Map.of(Material.BAMBOO, 1), saved.buffer());
+
+        var restored = new ProfileEmulation(profile, saved);
+        assertTrue(restored.paused(), "buffered items still block production");
+        output.capacity.clear();
+        restored.update(20, output); // buffer flushes, kelp 0.7 + 0.7 yields one item
+        assertEquals(Map.of(Material.BAMBOO, 6, Material.KELP, 1), output.items);
+        assertEquals(new BigDecimal("0.4"), restored.state().fractions().get(Material.KELP));
+    }
+
+    @Test
+    void stateOfAnotherProfileIsRejected() {
+        var state = new EmulationState(Map.of(Material.KELP, new BigDecimal("0.5")), Map.of());
+        var profile = new ProductionProfile(Map.of(Material.BAMBOO, 1.0), 3600);
+        assertThrows(IllegalArgumentException.class, () -> new ProfileEmulation(profile, state));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EmulationState(Map.of(Material.KELP, BigDecimal.ONE), Map.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EmulationState(Map.of(), Map.of(Material.KELP, 0)));
     }
 
     @Test
