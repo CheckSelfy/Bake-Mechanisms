@@ -73,6 +73,10 @@ public final class EmulationTrialService {
         return trial.emulation.buffer();
     }
 
+    public boolean isRunning(UUID farmId) {
+        return trials.containsKey(farmId);
+    }
+
     public void tick() {
         for (var trial : trials.values().toArray(Trial[]::new)) {
             trial.elapsed++;

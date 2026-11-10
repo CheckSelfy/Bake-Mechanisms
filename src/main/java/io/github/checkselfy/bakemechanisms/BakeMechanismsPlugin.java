@@ -11,7 +11,13 @@ import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
+import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
+import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
+import io.github.checkselfy.bakemechanisms.stasis.StasisCommands;
+import io.github.checkselfy.bakemechanisms.stasis.StasisProtection;
+import io.github.checkselfy.bakemechanisms.stasis.StasisService;
 import io.github.checkselfy.bakemechanisms.storage.FarmStorage;
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.logging.Level;
@@ -76,12 +82,28 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         var tickets = new ChunkTickets(paperWorld);
         profiling = new ProfilingService(registry, paperWorld, settings, tickets);
         trials = new EmulationTrialService(registry, new PaperEmulationWorld(paperWorld), tickets, emulationSettings);
+        // Snapshots share the farm directories with FarmStorage; the stasis manifest is authoritative for STASIS.
+        var stasis = new StasisService(registry, new PaperStasisWorld(this, resolver),
+                new FileSnapshotStore(getDataFolder().toPath().resolve("farms"), getServer().getMinecraftVersion()),
+                trials::isRunning);
+        try {
+            for (var id : stasis.recover()) {
+                getLogger().warning("Farm " + id + ": stored as STASIS without an active snapshot, now NEEDS_PROFILING.");
+            }
+        } catch (IOException | RuntimeException error) {
+            getLogger().log(Level.SEVERE, "Cannot recover active snapshots; plugin disabled.", error);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         var marking = new MarkingController(this, registry, resolver, profiling, trials);
+        var commands = new StasisCommands(marking, registry, stasis, getLogger(),
+                task -> getServer().getScheduler().runTaskLater(this, task, 1L));
         var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
-        command.setExecutor(marking);
-        command.setTabCompleter(marking);
+        command.setExecutor(commands);
+        command.setTabCompleter(commands);
         getServer().getPluginManager().registerEvents(marking, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
+        getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
         getServer().getScheduler().runTaskTimer(this, () -> {
             profiling.tick();
             trials.tick();

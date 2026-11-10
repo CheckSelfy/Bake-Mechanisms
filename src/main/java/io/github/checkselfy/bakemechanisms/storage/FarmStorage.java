@@ -210,11 +210,12 @@ public final class FarmStorage {
             return new OutputContainer(OutputContainer.Type.valueOf(required(file, yaml, "output.type")), blocks);
         });
         var profileSection = yaml.getConfigurationSection("profile");
-        if (state == State.READY && profileSection == null) {
-            throw new InvalidFile(file, "state READY requires a profile");
+        boolean profiled = state == State.READY || state == State.STASIS;
+        if (profiled && profileSection == null) {
+            throw new InvalidFile(file, "state " + state + " requires a profile");
         }
-        if (state != State.READY && profileSection != null) {
-            throw new InvalidFile(file, "state " + state + " must not have a profile (only READY has one)");
+        if (!profiled && profileSection != null) {
+            throw new InvalidFile(file, "state " + state + " must not have a profile (only READY and STASIS have one)");
         }
         var profile = profileSection == null ? null : read(file, "profile", () -> profile(file, profileSection));
         var farm = new MarkedFarm(id, creator, mechanism, output, state, profile);

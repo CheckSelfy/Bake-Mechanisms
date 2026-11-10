@@ -166,3 +166,49 @@ tasks.register<JavaExec>("runServer") {
     args("nogui")
     standardInput = System.`in`
 }
+
+// Runs destructive snapshot checks only in a separate disposable test server.
+val smokeTest = sourceSets.create("smokeTest") {
+    compileClasspath += sourceSets.main.get().output + configurations.compileClasspath.get()
+}
+
+val stasisSmokeJar = tasks.register<Jar>("stasisSmokeJar") {
+    archiveFileName.set("bake-stasis-smoke.jar")
+    from(smokeTest.output)
+}
+
+tasks.register<JavaExec>("stasisSmoke") {
+    group = "verification"
+    description = "Checks block/entity snapshots on a separate Paper server in run/stasis-smoke, then stops it."
+    dependsOn("setupServer", tasks.jar, stasisSmokeJar)
+    val smokeDir = layout.projectDirectory.dir("run/stasis-smoke").asFile
+    workingDir = smokeDir
+    classpath = files(smokeDir.resolve("paper.jar"))
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Xms512M", "-Xmx1G")
+    args("nogui")
+    doFirst {
+        smokeDir.resolve("plugins").mkdirs()
+        smokeDir.resolve("cache").mkdirs()
+        layout.projectDirectory.file("server/paper.jar").asFile.copyTo(smokeDir.resolve("paper.jar"), overwrite = true)
+        layout.projectDirectory.file("server/cache/mojang_26.3.jar").asFile
+            .copyTo(smokeDir.resolve("cache/mojang_26.3.jar"), overwrite = true)
+        layout.projectDirectory.file("server/eula.txt").asFile.copyTo(smokeDir.resolve("eula.txt"), overwrite = true)
+        tasks.jar.get().archiveFile.get().asFile.copyTo(smokeDir.resolve("plugins/bake-mechanisms.jar"), overwrite = true)
+        stasisSmokeJar.get().archiveFile.get().asFile.copyTo(smokeDir.resolve("plugins/bake-stasis-smoke.jar"), overwrite = true)
+        smokeDir.resolve("server.properties").writeText(
+            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\n"
+        )
+        Files.deleteIfExists(smokeDir.resolve("logs/latest.log").toPath())
+    }
+    doLast {
+        val log = smokeDir.resolve("logs/latest.log").readText()
+        if (!log.contains("BLOCK_STASIS_SMOKE_PASSED") || !log.contains("ENTITY_STASIS_SMOKE_PASSED")
+            || !log.contains("SIGN_STASIS_SMOKE_PASSED")
+            || !log.contains("EXTENDED_BLOCK_STASIS_SMOKE_PASSED")
+            || !log.contains("MOVING_PISTON_STASIS_SMOKE_PASSED")
+            || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
+        }
+    }
+}

@@ -117,7 +117,17 @@ class FarmStorageTest {
         var error = assertThrows(IllegalStateException.class, storage::loadAll);
 
         assertEquals("Cannot load farm " + ready.id() + " from " + file
-                + ": state NEEDS_PROFILING must not have a profile (only READY has one)", error.getMessage());
+                + ": state NEEDS_PROFILING must not have a profile (only READY and STASIS have one)", error.getMessage());
+    }
+
+    @Test
+    void stasisFarmKeepsItsProfileAcrossRestarts() {
+        var storage = new FarmStorage(root);
+        var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.STASIS, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
+        storage.save(farm);
+
+        assertEquals(List.of(new FarmStorage.StoredFarm(farm, Optional.empty())), storage.loadAll());
     }
 
     @Test

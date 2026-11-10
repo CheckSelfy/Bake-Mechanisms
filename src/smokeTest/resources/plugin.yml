@@ -1,0 +1,5 @@
+name: BakeStasisSmoke
+version: '1'
+main: io.github.checkselfy.bakemechanisms.smoke.BlockStasisSmokePlugin
+api-version: '26.3'
+depend: [BakeMechanisms]
