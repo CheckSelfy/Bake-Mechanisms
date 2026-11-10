@@ -1,2 +1,14 @@
 # Maximum inclusive volume of one mechanism in blocks.
 max-mechanism-volume: 262144
+
+profiling:
+  # Ticks between output snapshots during profiling. Total duration is fixed at 3600 ticks.
+  snapshot-interval: 20
+  # Shortest useful segment (before the output fills up), in ticks.
+  min-useful-ticks: 600
+  # Feature flag: reject profiles whose useful segment is shorter than min-useful-ticks.
+  reject-short-useful-segment: false
+
+emulation:
+  # Ticks between moving emulated items into the output container. Independent of profiling.snapshot-interval.
+  update-interval: 20
