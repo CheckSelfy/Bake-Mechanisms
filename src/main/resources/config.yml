@@ -8,3 +8,7 @@ profiling:
   min-useful-ticks: 600
   # Feature flag: reject profiles whose useful segment is shorter than min-useful-ticks.
   reject-short-useful-segment: false
+
+emulation:
+  # Ticks between moving emulated items into the output container. Independent of profiling.snapshot-interval.
+  update-interval: 20

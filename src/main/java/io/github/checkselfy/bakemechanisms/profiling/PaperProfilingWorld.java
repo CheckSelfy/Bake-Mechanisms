@@ -40,7 +40,12 @@ public final class PaperProfilingWorld implements ProfilingWorld {
         return new OutputSnapshot(counts, full);
     }
 
-    private Inventory inventory(OutputContainer output) {
+    /**
+     * Live inventory of the registered output, re-resolved on every call.
+     *
+     * @throws IllegalStateException when the output is no longer the registered container
+     */
+    public Inventory inventory(OutputContainer output) {
         var anchor = output.blocks().iterator().next();
         World world = plugin.getServer().getWorld(anchor.worldId());
         if (world == null) throw new IllegalStateException("Мир выходного контейнера не загружен.");
