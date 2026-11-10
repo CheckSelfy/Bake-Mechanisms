@@ -1,0 +1,5 @@
+name: BakeMechanisms
+version: '${version}'
+main: io.github.checkselfy.bakemechanisms.BakeMechanismsPlugin
+api-version: '26.3'
+description: Profiles and emulates resource-producing farms.
