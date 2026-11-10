@@ -76,9 +76,8 @@ public final class StasisService {
             world.removeEntities(farm, snapshot.data());
             world.fill(farm.mechanism());
         } catch (RuntimeException error) {
-            refill(farm, error);
-            // The filler stands in for the mechanism either way, so the farm keeps producing.
-            production.start(stasisFarm);
+            // Only a complete filler stands in for the mechanism; a remaining original must not run alongside.
+            if (refill(farm, error)) production.start(stasisFarm);
             throw new IllegalArgumentException("Ошибка замены механизма. Снимок сохранён; используйте /bake restore "
                     + farmId + ".", error);
         }
@@ -97,11 +96,12 @@ public final class StasisService {
             world.restore(farm, snapshot.data());
             store.deactivate(farmId);
         } catch (IOException | RuntimeException error) {
-            refill(farm, error);
-            production.resume(farmId);
+            // Production stays paused while any part of the original remains in place.
+            if (refill(farm, error)) production.resume(farmId);
             throw new IllegalArgumentException("Восстановление не завершено. Снимок и защита сохранены; повторите команду.", error);
         }
-        // The leftover buffer is set aside before the profile, and the emulation state with it, is dropped.
+        // Normal operation: the leftover buffer is saved before the profile, and emulation.dat with it, is
+        // dropped. A process crash between deactivate and this point is outside the MVP guarantees.
         production.finish(farmId);
         registry.markNeedsProfiling(farmId);
         active.remove(farmId);
@@ -119,13 +119,16 @@ public final class StasisService {
         }
     }
 
-    private void refill(MarkedFarm farm, Throwable failure) {
+    /** @return whether the whole cuboid is filler again */
+    private boolean refill(MarkedFarm farm, Throwable failure) {
         try {
             var snapshot = active.get(farm.id());
             if (snapshot != null) world.removeEntities(farm, snapshot.data());
             world.fill(farm.mechanism());
+            return true;
         } catch (RuntimeException rollbackError) {
             if (failure != rollbackError) failure.addSuppressed(rollbackError);
+            return false;
         }
     }
 }

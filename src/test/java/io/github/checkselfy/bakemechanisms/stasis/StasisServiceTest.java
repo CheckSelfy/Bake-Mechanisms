@@ -209,6 +209,19 @@ class StasisServiceTest {
     }
 
     @Test
+    void failedRefillNeverRunsProductionAlongsideARemainingOriginal() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        doThrow(new IllegalStateException("world failure"), new IllegalStateException("rollback failure"))
+                .when(world).fill(any());
+        assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
+        verify(production, never()).start(any());
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
     void restorePausesProductionAndLeavesOnlyTheLeftoverBufferBeforeTheProfileIsDropped() throws Exception {
         var production = mock(StasisProduction.class);
         var producing = new StasisService(registry, world, store, production);
@@ -239,6 +252,20 @@ class StasisServiceTest {
         order.verify(world).fill(farm.mechanism()); // the filler is back before production resumes
         order.verify(production).resume(farm.id());
         verify(production, never()).finish(any());
+    }
+
+    @Test
+    void failedRestoreWithFailedRefillKeepsProductionPaused() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        producing.enter(farm.id(), creator);
+        doThrow(new IllegalStateException("partial restore")).when(world).restore(any(), any());
+        doThrow(new IllegalStateException("rollback failure")).when(world).fill(any());
+        assertThrows(IllegalArgumentException.class, () -> producing.restore(farm.id(), creator));
+        verify(production).pause(farm.id());
+        verify(production, never()).resume(any());
     }
 
     @Test

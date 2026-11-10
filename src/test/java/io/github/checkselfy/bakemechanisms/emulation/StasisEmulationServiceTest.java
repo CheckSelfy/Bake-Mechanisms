@@ -130,7 +130,7 @@ class StasisEmulationServiceTest {
         var items = world.outputs.remove(farm.output());
         tick(100);
         assertEquals(1, world.messages.get(creator).size());
-        assertTrue(world.messages.get(creator).getFirst().contains("сохранена"));
+        assertTrue(world.messages.get(creator).getFirst().contains("сохранён"));
         assertEquals(Set.of(OUTPUT_CHUNK), world.tickets);
 
         world.outputs.put(farm.output(), items); // container rebuilt
@@ -172,6 +172,19 @@ class StasisEmulationServiceTest {
         tick(20);
         assertEquals(Map.of(Material.BONE, 4), world.items(farm.output()));
         assertFalse(service.draining(farm.id()));
+        assertTrue(world.tickets.isEmpty());
+    }
+
+    @Test
+    void shutdownSavesLeftoverBufferAgainSoAFailedWriteLosesNothing() {
+        var farm = stasis(Map.of(Material.BONE, 5.0));
+        world.capacity.put(farm.output(), 0);
+        service.start(farm, empty());
+        tick(20);
+        service.finish(farm.id());
+        store.drains.clear(); // the write in finish failed
+        service.stopAll();
+        assertEquals(Map.of(Material.BONE, 5), store.drains.get(farm.id()));
         assertTrue(world.tickets.isEmpty());
     }
 

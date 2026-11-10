@@ -157,7 +157,7 @@ public final class StasisEmulationService {
             if (!farm.reportedLoss) {
                 farm.reportedLoss = true;
                 world.notify(farm.farm.creatorId(), "Выходной контейнер фермы " + farm.farm.id()
-                        + " недоступен: " + error.getMessage() + " Выработка сохранена и будет перенесена, когда"
+                        + " недоступен: " + error.getMessage() + " Буфер выработки сохранён и будет перенесён, когда"
                         + " контейнер снова примет предметы.");
             }
             return false;
@@ -171,7 +171,10 @@ public final class StasisEmulationService {
             farm.chunks.forEach(tickets::release);
         }
         running.clear();
-        for (var farm : draining.values()) farm.chunks.forEach(tickets::release);
+        for (var farm : draining.values()) {
+            store.saveDrain(farm.farm.id(), farm.buffer);
+            farm.chunks.forEach(tickets::release);
+        }
         draining.clear();
     }
 
