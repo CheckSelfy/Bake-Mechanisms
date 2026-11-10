@@ -6,9 +6,11 @@ import io.github.checkselfy.bakemechanisms.emulation.EmulationStore;
 import io.github.checkselfy.bakemechanisms.emulation.StasisEmulationService;
 import io.github.checkselfy.bakemechanisms.emulation.PaperEmulationWorld;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
+import io.github.checkselfy.bakemechanisms.marking.FarmRemoval;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
 import io.github.checkselfy.bakemechanisms.marking.MarkingController;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
+import io.github.checkselfy.bakemechanisms.marking.ReadyMechanismWatcher;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
 import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
@@ -113,7 +115,9 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             emulation.drain(registry.requireCreator(farmData.farm().id(), farmData.farm().creatorId()),
                     farmData.drain());
         }
-        var marking = new MarkingController(this, registry, resolver, profiling);
+        // Snapshot files share the farm directory, and storage refuses to delete one with an active snapshot.
+        var removal = new FarmRemoval(registry, storage::delete, emulation::stopDraining, System::currentTimeMillis);
+        var marking = new MarkingController(this, registry, resolver, profiling, removal);
         var commands = new StasisCommands(marking, registry, stasis, getLogger(),
                 task -> getServer().getScheduler().runTaskLater(this, task, 1L));
         var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
@@ -121,6 +125,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         command.setTabCompleter(commands);
         getServer().getPluginManager().registerEvents(marking, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
+        getServer().getPluginManager().registerEvents(new ReadyMechanismWatcher(registry, getServer()), this);
         getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
         getServer().getScheduler().runTaskTimer(this, () -> {
             profiling.tick();

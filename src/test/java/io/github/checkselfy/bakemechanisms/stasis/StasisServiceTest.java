@@ -279,6 +279,43 @@ class StasisServiceTest {
         verifyNoInteractions(world);
     }
 
+    @Test
+    void restoredFarmNeedsANewProfileBeforeTheNextStasis() throws Exception {
+        var farm = ready();
+        when(world.capture(any())).thenReturn(new byte[] { 1 });
+        service.enter(farm.id(), creator);
+        service.restore(farm.id(), creator);
+
+        assertThrows(IllegalArgumentException.class, () -> service.enter(farm.id(), creator));
+        verify(store, times(1)).save(any());
+
+        var newProfile = new ProductionProfile(Map.of(Material.STONE, 2.0), 1200);
+        registry.markProfiling(farm.id());
+        registry.markReady(farm.id(), newProfile);
+        service.enter(farm.id(), creator);
+
+        var saved = org.mockito.ArgumentCaptor.forClass(SavedSnapshot.class);
+        verify(store, times(2)).save(saved.capture());
+        assertEquals(newProfile, saved.getValue().farm().profile());
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+        assertEquals(newProfile, registry.requireCreator(farm.id(), creator).profile());
+    }
+
+    @Test
+    void changedReadyMechanismCannotEnterStasisUntilProfiledAgain() throws Exception {
+        var farm = ready();
+        registry.invalidateReady(farm.mechanism().min());
+
+        assertThrows(IllegalArgumentException.class, () -> service.enter(farm.id(), creator));
+        verifyNoInteractions(store);
+
+        registry.markProfiling(farm.id());
+        registry.markReady(farm.id(), new ProductionProfile(Map.of(Material.STONE, 2.0), 1200));
+        when(world.capture(any())).thenReturn(new byte[] { 1 });
+        service.enter(farm.id(), creator);
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+    }
+
     private FarmRegistry.MarkedFarm ready() {
         var point = new BlockPosition(worldId, 0, 64, 0);
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(

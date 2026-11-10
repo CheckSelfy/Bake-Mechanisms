@@ -167,6 +167,43 @@ class FarmStorageTest {
         assertEquals(List.of(), new FarmStorage(root.resolve("absent")).loadAll());
     }
 
+    @Test
+    void deleteRemovesEveryFileOfTheFarmAndOnlyThatFarm() throws IOException {
+        var storage = new FarmStorage(root);
+        var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.READY, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
+        var other = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.NEEDS_PROFILING, null);
+        storage.save(farm);
+        storage.saveEmulation(farm.id(), new EmulationState(Map.of(), Map.of(Material.KELP, 2)));
+        storage.saveDrain(farm.id(), Map.of(Material.KELP, 3));
+        Files.write(root.resolve(farm.id().toString()).resolve("snapshot.bin"), new byte[] { 1 });
+        storage.save(other);
+
+        storage.delete(farm.id());
+
+        assertFalse(Files.exists(root.resolve(farm.id().toString())));
+        assertEquals(List.of(new FarmStorage.StoredFarm(other, Optional.empty())), storage.loadAll());
+        assertDoesNotThrow(() -> storage.delete(farm.id()), "nothing left to delete");
+    }
+
+    @Test
+    void deleteNeverTouchesAFarmWithAnActiveSnapshot() throws IOException {
+        var storage = new FarmStorage(root);
+        var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.STASIS, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
+        storage.save(farm);
+        var directory = root.resolve(farm.id().toString());
+        Files.write(directory.resolve("snapshot.bin"), new byte[] { 1 });
+        Files.writeString(directory.resolve("stasis.yml"), "id: " + farm.id());
+
+        assertThrows(IllegalStateException.class, () -> storage.delete(farm.id()));
+
+        assertTrue(Files.exists(directory.resolve("snapshot.bin")));
+        assertTrue(Files.exists(directory.resolve("stasis.yml")));
+        assertTrue(Files.exists(directory.resolve("farm.yml")));
+    }
+
     private static Cuboid mechanism() {
         return new Cuboid(new BlockPosition(WORLD, 0, 60, 0), new BlockPosition(WORLD, 4, 64, 4));
     }

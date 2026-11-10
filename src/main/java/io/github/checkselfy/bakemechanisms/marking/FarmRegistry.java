@@ -9,8 +9,9 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * Registered farms; call on the server thread. Every mutation is reported to the change listener,
- * which persists it.
+ * Registered farms; call on the server thread. Every registration and state change is reported to the change
+ * listener, which persists it. {@link #remove} is not reported: the caller deletes the saved data first, so a
+ * failed deletion keeps the registration.
  */
 public final class FarmRegistry {
     public static final long DEFAULT_MAX_VOLUME = 262_144;
@@ -153,6 +154,27 @@ public final class FarmRegistry {
     /** Drops any previous profile: it must never be reused. */
     public MarkedFarm markNeedsProfiling(UUID farmId) {
         return replace(farmId, State.NEEDS_PROFILING, null);
+    }
+
+    /**
+     * A player changed {@code block}: a READY mechanism containing it no longer matches its profile, which is
+     * dropped. Farms in other states are left as they are.
+     *
+     * @return the farms moved to NEEDS_PROFILING
+     */
+    public List<MarkedFarm> invalidateReady(BlockPosition block) {
+        Objects.requireNonNull(block, "block");
+        return farms.values().stream()
+                .filter(farm -> farm.state() == State.READY && farm.mechanism().contains(block))
+                .map(MarkedFarm::id).toList().stream()
+                .map(this::markNeedsProfiling).toList();
+    }
+
+    /** Forgets the registration, freeing its placement. Saved data is the caller's to delete beforehand. */
+    public void remove(UUID farmId) {
+        if (farms.remove(Objects.requireNonNull(farmId, "farmId")) == null) {
+            throw new IllegalArgumentException("Ферма не найдена.");
+        }
     }
 
     private MarkedFarm replace(UUID farmId, State state, ProductionProfile profile) {

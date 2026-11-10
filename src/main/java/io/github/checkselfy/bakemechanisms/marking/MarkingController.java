@@ -30,14 +30,16 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
-    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "profile", "cancel", "clear");
-    private static final List<String> FARM_COMMANDS = List.of("info", "profile", "cancel");
+    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "profile", "cancel", "delete", "clear");
+    private static final List<String> FARM_COMMANDS = List.of("info", "profile", "cancel", "delete");
     private static final String HELP =
-            "/bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID> | clear";
+            "/bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID> | delete <UUID> | clear";
+    private static final String CONFIRM = "confirm";
     private final JavaPlugin plugin;
     private final FarmRegistry registry;
     private final PaperOutputResolver outputs;
     private final ProfilingService profiling;
+    private final FarmRemoval removal;
     private final NamespacedKey wandKey;
     private final Map<UUID, Selection> selections = new HashMap<>();
 
@@ -47,11 +49,12 @@ public final class MarkingController implements Listener, TabExecutor {
     }
 
     public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
-                             ProfilingService profiling) {
+                             ProfilingService profiling, FarmRemoval removal) {
         this.plugin = plugin;
         this.registry = registry;
         this.outputs = outputs;
         this.profiling = profiling;
+        this.removal = removal;
         this.wandKey = new NamespacedKey(plugin, "marking_wand");
     }
 
@@ -67,7 +70,9 @@ public final class MarkingController implements Listener, TabExecutor {
                 return true;
             }
             String operation = args[0].toLowerCase(Locale.ROOT);
-            if (args.length != (FARM_COMMANDS.contains(operation) ? 2 : 1)) {
+            boolean confirmation = operation.equals("delete") && args.length == 3
+                    && args[2].equalsIgnoreCase(CONFIRM);
+            if (args.length != (FARM_COMMANDS.contains(operation) ? 2 : 1) && !confirmation) {
                 player.sendMessage(HELP);
                 return true;
             }
@@ -97,6 +102,20 @@ public final class MarkingController implements Listener, TabExecutor {
                     profiling.cancel(id, player.getUniqueId());
                     player.sendMessage("Профилирование отменено, механизм не изменён.");
                     show(player, registry.requireCreator(id, player.getUniqueId()));
+                }
+                case "delete" -> {
+                    var id = parseId(args[1]);
+                    if (confirmation) {
+                        removal.confirm(id, player.getUniqueId());
+                        player.sendMessage("Регистрация фермы " + id + " удалена вместе с профилем и данными."
+                                + " Механизм остался в мире без изменений.");
+                    } else {
+                        show(player, removal.request(id, player.getUniqueId()));
+                        player.sendMessage("Удалить регистрацию, профиль и сохранённые данные фермы? Механизм в мире"
+                                + " не изменится; неперенесённый остаток буфера выработки будет потерян. Подтвердите в"
+                                + " течение " + FarmRemoval.CONFIRMATION_SECONDS + " секунд: /bake delete " + id
+                                + " " + CONFIRM);
+                    }
                 }
                 case "clear" -> {
                     selections.remove(player.getUniqueId());
@@ -245,6 +264,10 @@ public final class MarkingController implements Listener, TabExecutor {
         if (args.length == 2 && FARM_COMMANDS.contains(args[0].toLowerCase(Locale.ROOT))) {
             return registry.findByCreator(player.getUniqueId()).stream().map(farm -> farm.id().toString())
                     .filter(id -> id.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("delete")
+                && CONFIRM.startsWith(args[2].toLowerCase(Locale.ROOT))) {
+            return List.of(CONFIRM);
         }
         return List.of();
     }

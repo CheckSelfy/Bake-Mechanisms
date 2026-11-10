@@ -45,6 +45,8 @@ public final class FarmStorage implements EmulationStore {
     private static final String FARM_FILE = "farm.yml";
     private static final String EMULATION_FILE = "emulation.dat";
     private static final String DRAIN_FILE = "drain.dat";
+    /** Owned by the snapshot store, which shares the farm directory; its presence marks an active snapshot. */
+    private static final String ACTIVE_SNAPSHOT_FILE = "stasis.yml";
     private static final int DRAIN_FORMAT = 1;
     private static final int DRAIN_MAGIC = 0x4452414e; // "DRAN"
     private static final int FARM_FORMAT = 1;
@@ -154,6 +156,33 @@ public final class FarmStorage implements EmulationStore {
     public void deleteEmulation(UUID farmId) {
         try {
             Files.deleteIfExists(directory(farmId).resolve(EMULATION_FILE));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    /**
+     * Deletes the farm's directory with every file in it, including an inactive snapshot kept for diagnostics.
+     * {@code farm.yml} goes last, so a failed deletion leaves a loadable farm that can be deleted again.
+     *
+     * @throws IllegalStateException when the farm has an active snapshot ({@value #ACTIVE_SNAPSHOT_FILE}); nothing
+     *                               is deleted, because that snapshot may be the only copy of the original mechanism
+     * @throws UncheckedIOException  when a file cannot be deleted
+     */
+    public void delete(UUID farmId) {
+        var dir = directory(farmId);
+        if (!Files.isDirectory(dir)) return;
+        if (Files.exists(dir.resolve(ACTIVE_SNAPSHOT_FILE))) {
+            throw new IllegalStateException("Farm " + farmId + " has an active snapshot and cannot be deleted.");
+        }
+        try {
+            List<Path> files;
+            try (var entries = Files.list(dir)) {
+                files = entries.sorted(Comparator.comparing(file -> file.getFileName().toString().equals(FARM_FILE)))
+                        .toList();
+            }
+            for (var file : files) Files.delete(file);
+            Files.delete(dir);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }

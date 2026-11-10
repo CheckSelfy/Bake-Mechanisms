@@ -113,6 +113,16 @@ public final class StasisEmulationService {
         draining.put(farm.id(), new Draining(farm, chunks, buffer));
     }
 
+    /**
+     * The farm's registration is removed: delivery of its leftover buffer stops and the output chunk is released.
+     * Its saved files are deleted with the registration. A farm in stasis is never removed, so production is not
+     * affected.
+     */
+    public void stopDraining(UUID farmId) {
+        var farm = draining.remove(farmId);
+        if (farm != null) farm.chunks.forEach(tickets::release);
+    }
+
     /** True while a restored farm still has buffered items waiting for space in its output. */
     public boolean draining(UUID farmId) {
         return draining.containsKey(farmId);

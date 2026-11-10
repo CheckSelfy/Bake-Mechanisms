@@ -68,6 +68,48 @@ class FarmRegistryTest {
         assertEquals(1, registry.all().size());
     }
 
+    @Test
+    void changingAReadyMechanismDropsItsProfile() {
+        var profile = new ProductionProfile(Map.of(Material.KELP, 1.0), 3600);
+        var ready = registry.markReady(registry.register(creator, mechanism(0), output(40)).id(), profile);
+        var untouched = registry.markReady(registry.register(creator, mechanism(100), output(140)).id(), profile);
+        changes.clear();
+
+        var invalidated = registry.invalidateReady(new BlockPosition(WORLD, 2, 62, 2));
+
+        assertEquals(List.of(ready.id()), invalidated.stream().map(MarkedFarm::id).toList());
+        var changed = registry.requireCreator(ready.id(), creator);
+        assertEquals(State.NEEDS_PROFILING, changed.state());
+        assertNull(changed.profile());
+        assertEquals(List.of(changed), changes);
+        assertEquals(untouched, registry.requireCreator(untouched.id(), creator));
+    }
+
+    @Test
+    void onlyReadyFarmsAreInvalidatedByAChange() {
+        var farm = registry.register(creator, mechanism(0), output(40));
+        changes.clear();
+
+        assertTrue(registry.invalidateReady(new BlockPosition(WORLD, 2, 62, 2)).isEmpty());
+        registry.markProfiling(farm.id());
+        assertTrue(registry.invalidateReady(new BlockPosition(WORLD, 2, 62, 2)).isEmpty());
+        registry.markReady(farm.id(), new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
+        assertTrue(registry.invalidateReady(new BlockPosition(WORLD, 40, 60, 0)).isEmpty(), "output is not the mechanism");
+        assertEquals(State.READY, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
+    void removedFarmReleasesItsPlacement() {
+        var farm = registry.register(creator, mechanism(0), output(40));
+
+        registry.remove(farm.id());
+
+        assertTrue(registry.all().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> registry.requireCreator(farm.id(), creator));
+        assertDoesNotThrow(() -> registry.register(creator, mechanism(0), output(40)));
+        assertThrows(IllegalArgumentException.class, () -> registry.remove(farm.id()));
+    }
+
     private static Cuboid mechanism(int x) {
         return new Cuboid(new BlockPosition(WORLD, x, 60, 0), new BlockPosition(WORLD, x + 4, 64, 4));
     }

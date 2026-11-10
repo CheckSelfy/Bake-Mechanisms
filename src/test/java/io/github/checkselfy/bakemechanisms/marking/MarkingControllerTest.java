@@ -62,7 +62,8 @@ class MarkingControllerTest {
         when(meta.getPersistentDataContainer()).thenReturn(pdc);
         when(pdc.get(new NamespacedKey("bakemechanisms", "marking_wand"), PersistentDataType.BYTE))
                 .thenReturn((byte) 1);
-        controller = new MarkingController(plugin, registry, outputs, mock(ProfilingService.class));
+        controller = new MarkingController(plugin, registry, outputs, mock(ProfilingService.class),
+                mock(FarmRemoval.class));
     }
 
     @Test
