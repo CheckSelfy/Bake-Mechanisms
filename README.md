@@ -55,6 +55,7 @@ Paper 26.3 поставляется со встроенным spark, поэто�
 
 ## Документация
 
+- [Тестовые миры и сценарии](docs/testing/README.md) — генерация, экспорт, correctness-preview и протокол performance-review (#2).
 - [Спецификация MVP](.scratch/bake-mechanisms-mvp/spec.md) — область, жизненный цикл, настройки, ограничения и сценарии проверки.
 - [Глоссарий](GLOSSARY.md) — канонические термины проекта.
 - [ADR-0001](docs/adr/0001-replace-farms-with-snapshots-and-fillers.md) — архитектурное решение о снимках и заполнителях.
