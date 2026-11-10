@@ -58,6 +58,20 @@ tasks.jar {
     archiveFileName.set("bake-mechanisms.jar")
 }
 
+// Opt-in test-server tooling. Never included in the production plugin JAR.
+val fixtures = sourceSets.create("fixtures")
+configurations[fixtures.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
+tasks.check {
+    dependsOn(tasks.named(fixtures.classesTaskName))
+}
+
+tasks.register<Jar>("fixturesJar") {
+    group = "verification"
+    description = "Builds the separate, operator-only test-world generator."
+    archiveFileName.set("bake-test-fixtures.jar")
+    from(fixtures.output)
+}
+
 tasks.register("setupServer") {
     group = "application"
     description = "Downloads Paper 26.3 build 246 and prepares the local test server."
