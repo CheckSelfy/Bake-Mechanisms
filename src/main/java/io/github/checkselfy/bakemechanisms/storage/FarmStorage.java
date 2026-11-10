@@ -1,6 +1,7 @@
 package io.github.checkselfy.bakemechanisms.storage;
 
 import io.github.checkselfy.bakemechanisms.emulation.EmulationState;
+import io.github.checkselfy.bakemechanisms.emulation.EmulationStore;
 import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
 import io.github.checkselfy.bakemechanisms.marking.Cuboid;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
@@ -35,22 +36,34 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 /**
  * One directory per farm under {@code root}: {@code farm.yml} holds human-readable metadata and the profile,
- * {@code emulation.dat} holds the binary emulation state (buffered items and fractional accumulators).
- * No database is used. Each file is replaced atomically where the file system allows it. Emulation state lives
- * only beside a profile: saving a farm without one drops it, so a stale buffer never meets a new profile.
+ * {@code emulation.dat} holds the binary emulation state (buffered items and fractional accumulators), and
+ * {@code drain.dat} the leftover buffer of a restored farm. No database is used. Each file is replaced atomically
+ * where the file system allows it. Emulation state lives only beside a profile: saving a farm without one drops
+ * it, so a stale buffer never meets a new profile. The leftover buffer needs no profile and stays until delivered.
  */
-public final class FarmStorage {
+public final class FarmStorage implements EmulationStore {
     private static final String FARM_FILE = "farm.yml";
     private static final String EMULATION_FILE = "emulation.dat";
+    private static final String DRAIN_FILE = "drain.dat";
+    private static final int DRAIN_FORMAT = 1;
+    private static final int DRAIN_MAGIC = 0x4452414e; // "DRAN"
     private static final int FARM_FORMAT = 1;
     private static final int EMULATION_FORMAT = 1;
     private static final int EMULATION_MAGIC = 0x42414b45; // "BAKE"
 
-    /** @param emulation present only while emulation state was saved for the farm */
-    public record StoredFarm(MarkedFarm farm, Optional<EmulationState> emulation) {
+    /**
+     * @param emulation present only while emulation state was saved for the farm
+     * @param drain leftover buffer of a restored farm, empty when nothing waits for delivery
+     */
+    public record StoredFarm(MarkedFarm farm, Optional<EmulationState> emulation, Map<Material, Integer> drain) {
         public StoredFarm {
             Objects.requireNonNull(farm, "farm");
             Objects.requireNonNull(emulation, "emulation");
+            drain = Map.copyOf(Objects.requireNonNull(drain, "drain"));
+        }
+
+        public StoredFarm(MarkedFarm farm, Optional<EmulationState> emulation) {
+            this(farm, emulation, Map.of());
         }
     }
 
@@ -89,6 +102,7 @@ public final class FarmStorage {
     }
 
     /** @throws UncheckedIOException when the file cannot be written; the previous file then stays intact */
+    @Override
     public void saveEmulation(UUID farmId, EmulationState state) {
         var bytes = new ByteArrayOutputStream();
         try (var out = new DataOutputStream(bytes)) {
@@ -99,15 +113,42 @@ public final class FarmStorage {
                 out.writeUTF(entry.getKey().getKey().toString());
                 out.writeUTF(entry.getValue().toString());
             }
-            out.writeInt(state.buffer().size());
-            for (var entry : sorted(state.buffer())) {
-                out.writeUTF(entry.getKey().getKey().toString());
-                out.writeInt(entry.getValue());
-            }
+            writeBuffer(out, state.buffer());
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
         write(directory(farmId).resolve(EMULATION_FILE), bytes.toByteArray());
+    }
+
+    /** @throws UncheckedIOException when the file cannot be written; the previous file then stays intact */
+    @Override
+    public void saveDrain(UUID farmId, Map<Material, Integer> buffer) {
+        var bytes = new ByteArrayOutputStream();
+        try (var out = new DataOutputStream(bytes)) {
+            out.writeInt(DRAIN_MAGIC);
+            out.writeInt(DRAIN_FORMAT);
+            writeBuffer(out, buffer);
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+        write(directory(farmId).resolve(DRAIN_FILE), bytes.toByteArray());
+    }
+
+    @Override
+    public void deleteDrain(UUID farmId) {
+        try {
+            Files.deleteIfExists(directory(farmId).resolve(DRAIN_FILE));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private static void writeBuffer(DataOutputStream out, Map<Material, Integer> buffer) throws IOException {
+        out.writeInt(buffer.size());
+        for (var entry : sorted(buffer)) {
+            out.writeUTF(entry.getKey().getKey().toString());
+            out.writeInt(entry.getValue());
+        }
     }
 
     public void deleteEmulation(UUID farmId) {
@@ -220,8 +261,14 @@ public final class FarmStorage {
         var profile = profileSection == null ? null : read(file, "profile", () -> profile(file, profileSection));
         var farm = new MarkedFarm(id, creator, mechanism, output, state, profile);
 
+        Map<Material, Integer> drain = Map.of();
+        var drainFile = dir.resolve(DRAIN_FILE);
+        if (Files.exists(drainFile)) {
+            var drainBytes = Files.readAllBytes(drainFile);
+            drain = read(drainFile, "leftover buffer", () -> drain(drainFile, drainBytes));
+        }
         var emulationFile = dir.resolve(EMULATION_FILE);
-        if (!Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty());
+        if (!Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty(), drain);
         if (profile == null) throw new InvalidFile(emulationFile, "emulation state without a profile");
         var bytes = Files.readAllBytes(emulationFile);
         var emulation = read(emulationFile, "emulation state", () -> emulation(emulationFile, bytes));
@@ -229,7 +276,32 @@ public final class FarmStorage {
         if (!produced.containsAll(emulation.fractions().keySet()) || !produced.containsAll(emulation.buffer().keySet())) {
             throw new InvalidFile(emulationFile, "emulation state holds items the profile does not produce");
         }
-        return new StoredFarm(farm, Optional.of(emulation));
+        return new StoredFarm(farm, Optional.of(emulation), drain);
+    }
+
+    private static Map<Material, Integer> drain(Path file, byte[] bytes) throws InvalidFile {
+        try (var in = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            if (in.readInt() != DRAIN_MAGIC) throw new InvalidFile(file, "not a leftover buffer file");
+            int format = in.readInt();
+            if (format != DRAIN_FORMAT) {
+                throw new InvalidFile(file, "unsupported format " + format + ", expected " + DRAIN_FORMAT);
+            }
+            var buffer = readBuffer(file, in);
+            if (buffer.values().stream().anyMatch(amount -> amount < 1)) {
+                throw new InvalidFile(file, "item counts must be positive");
+            }
+            if (in.read() != -1) throw new InvalidFile(file, "unexpected trailing data");
+            return buffer;
+        } catch (IOException error) {
+            throw new InvalidFile(file, "truncated or unreadable", error);
+        }
+    }
+
+    private static Map<Material, Integer> readBuffer(Path file, DataInputStream in)
+            throws IOException, InvalidFile {
+        var buffer = new EnumMap<Material, Integer>(Material.class);
+        for (int i = in.readInt(); i > 0; i--) buffer.put(material(file, in.readUTF()), in.readInt());
+        return buffer;
     }
 
     private static ProductionProfile profile(Path file, ConfigurationSection section) throws InvalidFile {
@@ -259,8 +331,7 @@ public final class FarmStorage {
             for (int i = in.readInt(); i > 0; i--) {
                 fractions.put(material(file, in.readUTF()), new BigDecimal(in.readUTF()));
             }
-            var buffer = new EnumMap<Material, Integer>(Material.class);
-            for (int i = in.readInt(); i > 0; i--) buffer.put(material(file, in.readUTF()), in.readInt());
+            var buffer = readBuffer(file, in);
             if (in.read() != -1) throw new InvalidFile(file, "unexpected trailing data");
             return new EmulationState(fractions, buffer);
         } catch (IOException error) {

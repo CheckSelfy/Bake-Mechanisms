@@ -87,6 +87,11 @@ public final class ProfileEmulation {
     }
 
     private void flush(Output output) {
+        deliver(buffer, output);
+    }
+
+    /** Moves as much of {@code buffer} into {@code output} as fits, removing what was accepted. */
+    static void deliver(Map<Material, Integer> buffer, Output output) {
         for (var iterator = buffer.entrySet().iterator(); iterator.hasNext(); ) {
             var entry = iterator.next();
             int accepted = output.insert(entry.getKey(), entry.getValue());

@@ -1,6 +1,5 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
-import io.github.checkselfy.bakemechanisms.emulation.EmulationTrialService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import java.util.HashMap;
@@ -31,16 +30,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
-    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "profile", "cancel", "start-emulate", "stop-emulate", "clear");
-    private static final List<String> FARM_COMMANDS = List.of("info", "profile", "cancel", "start-emulate", "stop-emulate");
+    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "profile", "cancel", "clear");
+    private static final List<String> FARM_COMMANDS = List.of("info", "profile", "cancel");
     private static final String HELP =
-            "/bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID>"
-                    + " | start-emulate <UUID> | stop-emulate <UUID> | clear";
+            "/bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID> | clear";
     private final JavaPlugin plugin;
     private final FarmRegistry registry;
     private final PaperOutputResolver outputs;
     private final ProfilingService profiling;
-    private final EmulationTrialService trials;
     private final NamespacedKey wandKey;
     private final Map<UUID, Selection> selections = new HashMap<>();
 
@@ -50,12 +47,11 @@ public final class MarkingController implements Listener, TabExecutor {
     }
 
     public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
-                             ProfilingService profiling, EmulationTrialService trials) {
+                             ProfilingService profiling) {
         this.plugin = plugin;
         this.registry = registry;
         this.outputs = outputs;
         this.profiling = profiling;
-        this.trials = trials;
         this.wandKey = new NamespacedKey(plugin, "marking_wand");
     }
 
@@ -101,18 +97,6 @@ public final class MarkingController implements Listener, TabExecutor {
                     profiling.cancel(id, player.getUniqueId());
                     player.sendMessage("Профилирование отменено, механизм не изменён.");
                     show(player, registry.requireCreator(id, player.getUniqueId()));
-                }
-                // Verification-only emulation without stasis; removed when stasis lands (#9).
-                case "start-emulate" -> {
-                    trials.start(parseId(args[1]), player.getUniqueId());
-                    player.sendMessage("Проверочная эмуляция запущена без стазиса: исходный механизм продолжает"
-                            + " работать. Остановка: /bake stop-emulate <UUID>.");
-                }
-                case "stop-emulate" -> {
-                    var dropped = trials.stop(parseId(args[1]), player.getUniqueId());
-                    player.sendMessage(dropped.isEmpty() ? "Проверочная эмуляция остановлена."
-                            : "Проверочная эмуляция остановлена. Буфер выработки, не поместившийся в выходной"
-                            + " контейнер, отброшен: " + EmulationTrialService.describe(dropped));
                 }
                 case "clear" -> {
                     selections.remove(player.getUniqueId());

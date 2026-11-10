@@ -47,6 +47,24 @@ class ProfilingServiceTest {
     }
 
     @Test
+    void profilingWaitsUntilTheLeftoverBufferIsDelivered() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        var draining = new HashSet<UUID>(Set.of(farm.id()));
+        var guarded = new ProfilingService(registry, world, ProfilingSettings.DEFAULT, new ChunkTickets(world),
+                draining::contains);
+
+        var error = assertThrows(IllegalArgumentException.class, () -> guarded.start(farm.id(), creator));
+        assertTrue(error.getMessage().contains("буфер"), error.getMessage());
+        assertEquals(State.NEEDS_PROFILING, registry.requireCreator(farm.id(), creator).state());
+        assertTrue(world.tickets.isEmpty());
+
+        draining.clear();
+        guarded.start(farm.id(), creator);
+        assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
     void creatorCancelReleasesTicketsAndAllowsRestart() {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
         world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));

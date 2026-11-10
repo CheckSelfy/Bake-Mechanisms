@@ -1,9 +1,12 @@
 package io.github.checkselfy.bakemechanisms;
 
 import io.github.checkselfy.bakemechanisms.emulation.EmulationSettings;
-import io.github.checkselfy.bakemechanisms.emulation.EmulationTrialService;
+import io.github.checkselfy.bakemechanisms.emulation.EmulationState;
+import io.github.checkselfy.bakemechanisms.emulation.EmulationStore;
+import io.github.checkselfy.bakemechanisms.emulation.StasisEmulationService;
 import io.github.checkselfy.bakemechanisms.emulation.PaperEmulationWorld;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
+import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
 import io.github.checkselfy.bakemechanisms.marking.MarkingController;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
@@ -14,18 +17,23 @@ import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
 import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
 import io.github.checkselfy.bakemechanisms.stasis.StasisCommands;
+import io.github.checkselfy.bakemechanisms.stasis.StasisProduction;
 import io.github.checkselfy.bakemechanisms.stasis.StasisProtection;
 import io.github.checkselfy.bakemechanisms.stasis.StasisService;
 import io.github.checkselfy.bakemechanisms.storage.FarmStorage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.logging.Level;
+import org.bukkit.Material;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class BakeMechanismsPlugin extends JavaPlugin {
     private ProfilingService profiling;
-    private EmulationTrialService trials;
+    private StasisEmulationService emulation;
 
     @Override
     public void onEnable() {
@@ -60,9 +68,11 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
                 getLogger().log(Level.SEVERE, "Failed to save farm " + farm.id(), error);
             }
         });
+        var stored = new HashMap<UUID, FarmStorage.StoredFarm>();
         try {
-            for (var stored : storage.loadAll()) {
-                var saved = stored.farm();
+            for (var farmData : storage.loadAll()) {
+                stored.put(farmData.farm().id(), farmData);
+                var saved = farmData.farm();
                 var restored = registry.restore(saved);
                 if (restored.state() != saved.state()) {
                     getLogger().info("Farm " + saved.id() + ": unfinished profiling cancelled by restart, now "
@@ -80,12 +90,15 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         var resolver = new PaperOutputResolver();
         var paperWorld = new PaperProfilingWorld(this, resolver);
         var tickets = new ChunkTickets(paperWorld);
-        profiling = new ProfilingService(registry, paperWorld, settings, tickets);
-        trials = new EmulationTrialService(registry, new PaperEmulationWorld(paperWorld), tickets, emulationSettings);
+        // Collected before recovery, which consumes the saved progress of farms in stasis.
+        var drains = stored.values().stream().filter(farmData -> !farmData.drain().isEmpty()).toList();
+        emulation = new StasisEmulationService(new PaperEmulationWorld(paperWorld), tickets, emulationSettings,
+                loggingStore(storage));
+        profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining);
         // Snapshots share the farm directories with FarmStorage; the stasis manifest is authoritative for STASIS.
         var stasis = new StasisService(registry, new PaperStasisWorld(this, resolver),
                 new FileSnapshotStore(getDataFolder().toPath().resolve("farms"), getServer().getMinecraftVersion()),
-                trials::isRunning);
+                production(emulation, stored));
         try {
             for (var id : stasis.recover()) {
                 getLogger().warning("Farm " + id + ": stored as STASIS without an active snapshot, now NEEDS_PROFILING.");
@@ -95,7 +108,12 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        var marking = new MarkingController(this, registry, resolver, profiling, trials);
+        // Restored farms deliver what was left of their buffer; this needs no profile.
+        for (var farmData : drains) {
+            emulation.drain(registry.requireCreator(farmData.farm().id(), farmData.farm().creatorId()),
+                    farmData.drain());
+        }
+        var marking = new MarkingController(this, registry, resolver, profiling);
         var commands = new StasisCommands(marking, registry, stasis, getLogger(),
                 task -> getServer().getScheduler().runTaskLater(this, task, 1L));
         var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
@@ -106,7 +124,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
         getServer().getScheduler().runTaskTimer(this, () -> {
             profiling.tick();
-            trials.tick();
+            emulation.tick();
         }, 1L, 1L);
         getLogger().info("Bake Mechanisms enabled");
     }
@@ -115,7 +133,57 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
     public void onDisable() {
         // Unfinished profiling never survives a restart: drop protection and chunk tickets.
         if (profiling != null) profiling.cancelAll();
-        if (trials != null) trials.stopAll();
+        // Production of farms in stasis is saved and continues after the restart.
+        if (emulation != null) emulation.stopAll();
         getLogger().info("Bake Mechanisms disabled");
+    }
+
+    /**
+     * Starts production with the progress saved before the restart. Saved progress belongs to the profile it was
+     * produced with; any other profile starts from scratch.
+     */
+    private static StasisProduction production(StasisEmulationService emulation,
+                                               Map<UUID, FarmStorage.StoredFarm> stored) {
+        var empty = new EmulationState(Map.of(), Map.of());
+        return new StasisProduction() {
+            @Override public void start(MarkedFarm farm) {
+                var saved = stored.remove(farm.id());
+                var state = saved != null && saved.emulation().isPresent()
+                        && Objects.equals(saved.farm().profile(), farm.profile())
+                        ? saved.emulation().get() : empty;
+                emulation.start(farm, state);
+            }
+
+            @Override public void pause(UUID farmId) { emulation.pause(farmId); }
+
+            @Override public void resume(UUID farmId) { emulation.resume(farmId); }
+
+            @Override public void finish(UUID farmId) { emulation.finish(farmId); }
+        };
+    }
+
+    /** A failed write is logged; the progress stays in memory and is written again on the next change. */
+    private EmulationStore loggingStore(FarmStorage storage) {
+        return new EmulationStore() {
+            @Override public void saveEmulation(UUID farmId, EmulationState state) {
+                attempt(farmId, () -> storage.saveEmulation(farmId, state));
+            }
+
+            @Override public void saveDrain(UUID farmId, Map<Material, Integer> buffer) {
+                attempt(farmId, () -> storage.saveDrain(farmId, buffer));
+            }
+
+            @Override public void deleteDrain(UUID farmId) {
+                attempt(farmId, () -> storage.deleteDrain(farmId));
+            }
+
+            private void attempt(UUID farmId, Runnable write) {
+                try {
+                    write.run();
+                } catch (UncheckedIOException error) {
+                    getLogger().log(Level.SEVERE, "Failed to save emulation of farm " + farmId, error);
+                }
+            }
+        };
     }
 }

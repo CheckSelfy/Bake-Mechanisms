@@ -186,13 +186,70 @@ class StasisServiceTest {
     }
 
     @Test
-    void runningVerificationEmulationBlocksStasis() {
+    void productionStartsOnlyAfterTheMechanismIsReplaced() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
         var farm = ready();
-        var guarded = new StasisService(registry, world, store, farm.id()::equals);
-        var error = assertThrows(IllegalArgumentException.class, () -> guarded.enter(farm.id(), creator));
-        assertTrue(error.getMessage().contains("stop-emulate"));
-        verifyNoInteractions(world, store);
-        assertEquals(State.READY, registry.requireCreator(farm.id(), creator).state());
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        producing.enter(farm.id(), creator);
+        var order = inOrder(world, production);
+        order.verify(world).fill(farm.mechanism());
+        order.verify(production).start(registry.requireCreator(farm.id(), creator));
+    }
+
+    @Test
+    void partiallyReplacedMechanismIsRefilledAndStillProduces() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        doThrow(new IllegalStateException("world failure")).doNothing().when(world).fill(any());
+        assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
+        verify(production).start(registry.requireCreator(farm.id(), creator));
+    }
+
+    @Test
+    void restorePausesProductionAndLeavesOnlyTheLeftoverBufferBeforeTheProfileIsDropped() throws Exception {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        producing.enter(farm.id(), creator);
+        producing.restore(farm.id(), creator);
+        var order = inOrder(world, store, production);
+        order.verify(production).pause(farm.id());
+        order.verify(world).restore(any(), any());
+        order.verify(store).deactivate(farm.id());
+        order.verify(production).finish(farm.id());
+        verify(production, never()).resume(any());
+        assertEquals(State.NEEDS_PROFILING, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
+    void failedRestoreResumesProductionOverTheFiller() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        producing.enter(farm.id(), creator);
+        doThrow(new IllegalStateException("partial restore")).when(world).restore(any(), any());
+        assertThrows(IllegalArgumentException.class, () -> producing.restore(farm.id(), creator));
+        var order = inOrder(world, production);
+        order.verify(production).pause(farm.id());
+        order.verify(world).fill(farm.mechanism()); // the filler is back before production resumes
+        order.verify(production).resume(farm.id());
+        verify(production, never()).finish(any());
+    }
+
+    @Test
+    void recoveryContinuesProductionOfEveryActiveSnapshot() throws Exception {
+        var farm = ready();
+        var stasisFarm = registry.markStasis(farm.id());
+        when(store.loadActive()).thenReturn(List.of(new SavedSnapshot(stasisFarm, new byte[] { 1 })));
+        var production = mock(StasisProduction.class);
+        new StasisService(new FarmRegistry(1), world, store, production).recover();
+        verify(production).start(stasisFarm);
+        verifyNoInteractions(world);
     }
 
     private FarmRegistry.MarkedFarm ready() {

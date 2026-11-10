@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Runs independent profiling sessions. {@link #tick()} must be called once per server tick;
@@ -22,6 +23,7 @@ public final class ProfilingService {
     private final ProfilingSettings settings;
     private final Map<UUID, Session> sessions = new LinkedHashMap<>();
     private final ChunkTickets tickets;
+    private final Predicate<UUID> draining;
 
     private static final class Session {
         final MarkedFarm farm;
@@ -43,6 +45,16 @@ public final class ProfilingService {
     /** @param tickets shared with other features that force-load chunks of the same plugin */
     public ProfilingService(FarmRegistry registry, ProfilingWorld world, ProfilingSettings settings,
                             ChunkTickets tickets) {
+        this(registry, world, settings, tickets, farmId -> false);
+    }
+
+    /**
+     * @param draining whether a restored farm still delivers its leftover buffer; those items would be counted
+     *                 as production, so profiling waits for the delivery to finish
+     */
+    public ProfilingService(FarmRegistry registry, ProfilingWorld world, ProfilingSettings settings,
+                            ChunkTickets tickets, Predicate<UUID> draining) {
+        this.draining = Objects.requireNonNull(draining, "draining");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.world = Objects.requireNonNull(world, "world");
         this.settings = Objects.requireNonNull(settings, "settings");
@@ -55,6 +67,10 @@ public final class ProfilingService {
         if (farm.state() != State.NEEDS_PROFILING) {
             throw new IllegalArgumentException("Профилирование запускается только из NEEDS_PROFILING, сейчас "
                     + farm.state() + ".");
+        }
+        if (draining.test(farm.id())) {
+            throw new IllegalArgumentException("Остаток буфера выработки ещё переносится в выходной контейнер."
+                    + " Освободите в нём место и повторите профилирование.");
         }
         if (world.hasPlayerInside(farm.mechanism())) {
             throw new IllegalArgumentException("Внутри механизма находится игрок. Выйдите из кубоида и повторите.");

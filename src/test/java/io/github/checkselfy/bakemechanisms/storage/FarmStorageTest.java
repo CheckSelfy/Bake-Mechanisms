@@ -131,6 +131,38 @@ class FarmStorageTest {
     }
 
     @Test
+    void leftoverBufferOfARestoredFarmSurvivesLosingTheProfile() throws IOException {
+        var storage = new FarmStorage(root);
+        var stasis = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.STASIS, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
+        storage.save(stasis);
+        storage.saveEmulation(stasis.id(), new EmulationState(Map.of(), Map.of(Material.KELP, 3)));
+        storage.saveDrain(stasis.id(), Map.of(Material.KELP, 3));
+        var restored = new MarkedFarm(stasis.id(), stasis.creatorId(), stasis.mechanism(), stasis.output(),
+                State.NEEDS_PROFILING, null);
+        storage.save(restored);
+
+        var bytes = Files.readAllBytes(root.resolve(stasis.id().toString()).resolve("drain.dat"));
+        assertFalse(new String(bytes).contains("kelp 3"), "leftover buffer is binary");
+        assertEquals(List.of(new FarmStorage.StoredFarm(restored, Optional.empty(), Map.of(Material.KELP, 3))),
+                new FarmStorage(root).loadAll());
+
+        storage.deleteDrain(stasis.id());
+        assertEquals(List.of(new FarmStorage.StoredFarm(restored, Optional.empty())), storage.loadAll());
+    }
+
+    @Test
+    void corruptLeftoverBufferFailsLoudly() throws IOException {
+        var storage = new FarmStorage(root);
+        var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.NEEDS_PROFILING, null);
+        storage.save(farm);
+        Files.write(root.resolve(farm.id().toString()).resolve("drain.dat"), new byte[] { 1, 2, 3 });
+        var error = assertThrows(IllegalStateException.class, storage::loadAll);
+        assertTrue(error.getMessage().contains("drain.dat"), error.getMessage());
+    }
+
+    @Test
     void missingRootMeansNoFarms() {
         assertEquals(List.of(), new FarmStorage(root.resolve("absent")).loadAll());
     }

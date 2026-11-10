@@ -8,31 +8,32 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Predicate;
 
-/** Owns snapshot lifecycle; does not produce items or modify the emulation buffer. Server thread only. */
+/**
+ * Owns snapshot lifecycle and tells {@link StasisProduction} when the original mechanism leaves or returns.
+ * Server thread only.
+ */
 public final class StasisService {
     private final FarmRegistry registry;
     private final StasisWorld world;
     private final SnapshotStore store;
     private final Map<UUID, SavedSnapshot> active = new LinkedHashMap<>();
-
-    private final Predicate<UUID> emulating;
+    private final StasisProduction production;
 
     public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store) {
-        this(registry, world, store, farmId -> false);
+        this(registry, world, store, StasisProduction.NONE);
     }
 
-    /** @param emulating whether a verification emulation runs for the farm; stasis then waits for it to stop */
-    public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store, Predicate<UUID> emulating) {
+    public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store,
+                         StasisProduction production) {
         this.registry = registry;
         this.world = world;
         this.store = store;
-        this.emulating = emulating;
+        this.production = production;
     }
 
     /**
-     * Re-register protected snapshots without restoring the original mechanism. A farm stored as STASIS without
+     * Re-register protected snapshots and continue their production without restoring the original mechanism. A farm stored as STASIS without
      * an active snapshot was restored right before a crash (the manifest is removed only after a successful
      * restore), so it returns to NEEDS_PROFILING.
      *
@@ -43,6 +44,7 @@ public final class StasisService {
             registry.recoverStasis(snapshot.farm());
             active.put(snapshot.farm().id(), snapshot);
         }
+        for (var snapshot : active.values()) production.start(snapshot.farm());
         var orphaned = registry.all().stream()
                 .filter(farm -> farm.state() == State.STASIS && !active.containsKey(farm.id()))
                 .map(MarkedFarm::id).toList();
@@ -57,9 +59,6 @@ public final class StasisService {
     public void enter(UUID farmId, UUID actorId) {
         var farm = registry.requireCreator(farmId, actorId);
         if (farm.state() != State.READY) throw new IllegalArgumentException("Стазис доступен только из READY.");
-        if (emulating.test(farmId)) {
-            throw new IllegalArgumentException("Остановите проверочную эмуляцию: /bake stop-emulate " + farmId + ".");
-        }
         requireNoPlayers(farm);
         SavedSnapshot snapshot;
         try {
@@ -72,15 +71,18 @@ public final class StasisService {
         }
         // Protect the entire region before starting a possibly partial replacement.
         active.put(farmId, snapshot);
-        registry.markStasis(farmId);
+        var stasisFarm = registry.markStasis(farmId);
         try {
             world.removeEntities(farm, snapshot.data());
             world.fill(farm.mechanism());
         } catch (RuntimeException error) {
             refill(farm, error);
+            // The filler stands in for the mechanism either way, so the farm keeps producing.
+            production.start(stasisFarm);
             throw new IllegalArgumentException("Ошибка замены механизма. Снимок сохранён; используйте /bake restore "
                     + farmId + ".", error);
         }
+        production.start(stasisFarm);
     }
 
     public void restore(UUID farmId, UUID actorId) {
@@ -90,13 +92,17 @@ public final class StasisService {
             throw new IllegalArgumentException("Ферма не находится в стазисе.");
         }
         requireNoPlayers(farm);
+        production.pause(farmId);
         try {
             world.restore(farm, snapshot.data());
             store.deactivate(farmId);
         } catch (IOException | RuntimeException error) {
             refill(farm, error);
+            production.resume(farmId);
             throw new IllegalArgumentException("Восстановление не завершено. Снимок и защита сохранены; повторите команду.", error);
         }
+        // The leftover buffer is set aside before the profile, and the emulation state with it, is dropped.
+        production.finish(farmId);
         registry.markNeedsProfiling(farmId);
         active.remove(farmId);
     }
