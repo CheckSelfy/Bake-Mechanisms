@@ -11,14 +11,14 @@ import java.util.UUID;
 public final class FarmRegistry {
     public static final long DEFAULT_MAX_VOLUME = 262_144;
 
-    public enum State { NEEDS_PROFILING, PROFILING, READY }
+    public enum State { NEEDS_PROFILING, PROFILING, READY, STASIS }
 
-    /** @param profile valid production profile; present only in {@link State#READY} */
+    /** @param profile valid production profile; present in READY and STASIS */
     public record MarkedFarm(UUID id, UUID creatorId, Cuboid mechanism,
                              OutputContainer output, State state, ProductionProfile profile) {
         public MarkedFarm {
-            if ((state == State.READY) != (profile != null)) {
-                throw new IllegalArgumentException("Профиль хранится только в состоянии READY.");
+            if ((state == State.READY || state == State.STASIS) != (profile != null)) {
+                throw new IllegalArgumentException("Профиль хранится только в READY и STASIS.");
             }
         }
     }
@@ -83,6 +83,25 @@ public final class FarmRegistry {
 
     public MarkedFarm markReady(UUID farmId, ProductionProfile profile) {
         return replace(farmId, State.READY, Objects.requireNonNull(profile, "profile"));
+    }
+
+    public MarkedFarm markStasis(UUID farmId) {
+        var farm = farms.get(Objects.requireNonNull(farmId, "farmId"));
+        if (farm == null || farm.state() != State.READY) {
+            throw new IllegalArgumentException("Стазис доступен только из READY.");
+        }
+        return replace(farmId, State.STASIS, farm.profile());
+    }
+
+    /** Snapshot recovery only; generic profile/buffer persistence belongs to #8. */
+    public void recoverStasis(MarkedFarm farm) {
+        if (farm.state() != State.STASIS) throw new IllegalArgumentException("Ожидается STASIS.");
+        var existing = farms.get(farm.id());
+        if (existing != null && (!existing.creatorId().equals(farm.creatorId())
+                || !existing.mechanism().equals(farm.mechanism()) || !existing.output().equals(farm.output()))) {
+            throw new IllegalArgumentException("Снимок конфликтует с регистрацией фермы " + farm.id());
+        }
+        farms.put(farm.id(), farm);
     }
 
     /** Drops any previous profile: it must never be reused. */

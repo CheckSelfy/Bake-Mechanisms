@@ -7,6 +7,12 @@ import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
+import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
+import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
+import io.github.checkselfy.bakemechanisms.stasis.StasisCommands;
+import io.github.checkselfy.bakemechanisms.stasis.StasisProtection;
+import io.github.checkselfy.bakemechanisms.stasis.StasisService;
+import java.io.IOException;
 import java.util.Objects;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -37,13 +43,25 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         }
         var registry = new FarmRegistry(maxVolume);
         var resolver = new PaperOutputResolver();
+        var stasis = new StasisService(registry, new PaperStasisWorld(this, resolver),
+                new FileSnapshotStore(getDataFolder().toPath().resolve("farms"), getServer().getMinecraftVersion()));
+        try {
+            stasis.recover();
+        } catch (IOException | RuntimeException error) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Cannot recover active snapshots; plugin disabled.", error);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         profiling = new ProfilingService(registry, new PaperProfilingWorld(this, resolver), settings);
         var marking = new MarkingController(this, registry, resolver, profiling);
+        var commands = new StasisCommands(marking, registry, stasis, getLogger(),
+                task -> getServer().getScheduler().runTaskLater(this, task, 1L));
         var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
-        command.setExecutor(marking);
-        command.setTabCompleter(marking);
+        command.setExecutor(commands);
+        command.setTabCompleter(commands);
         getServer().getPluginManager().registerEvents(marking, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
+        getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
         getServer().getScheduler().runTaskTimer(this, profiling::tick, 1L, 1L);
         getLogger().info("Bake Mechanisms enabled");
     }
