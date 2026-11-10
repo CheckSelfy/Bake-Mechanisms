@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "io.github.checkselfy"
-version = "0.1.0"
+// version comes from gradle.properties; release builds override it with -Pversion=<tag without v>.
 
 repositories {
     mavenCentral()
