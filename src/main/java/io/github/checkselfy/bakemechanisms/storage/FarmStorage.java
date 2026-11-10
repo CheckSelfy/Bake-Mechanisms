@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -163,15 +162,20 @@ public final class FarmStorage {
             blocks.add(position(world, coordinates));
         }
         var output = new OutputContainer(OutputContainer.Type.valueOf(required(yaml, "output.type")), blocks);
+        var state = State.valueOf(required(yaml, "state"));
+        // A profile is valid only in READY. Outside it (e.g. the state was edited by hand to force re-profiling)
+        // a leftover profile and its emulation state are ignored, like markNeedsProfiling drops them.
         ProductionProfile profile = null;
         var profileSection = yaml.getConfigurationSection("profile");
-        if (profileSection != null) profile = profile(profileSection);
-        var farm = new MarkedFarm(id, UUID.fromString(required(yaml, "creator")), mechanism, output,
-                State.valueOf(required(yaml, "state")), profile);
+        if (state == State.READY) {
+            if (profileSection == null) throw new IllegalArgumentException("нет профиля производства для READY");
+            profile = profile(profileSection);
+        }
+        var farm = new MarkedFarm(id, UUID.fromString(required(yaml, "creator")), mechanism, output, state, profile);
         var emulationFile = dir.resolve(EMULATION_FILE);
-        if (!Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty());
+        if (profile == null || !Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty());
         var emulation = emulation(Files.readAllBytes(emulationFile));
-        var produced = profile == null ? Set.<Material>of() : profile.ratesPer20Ticks().keySet();
+        var produced = profile.ratesPer20Ticks().keySet();
         if (!produced.containsAll(emulation.fractions().keySet()) || !produced.containsAll(emulation.buffer().keySet())) {
             throw new IllegalArgumentException("состояние эмуляции не соответствует профилю производства");
         }
