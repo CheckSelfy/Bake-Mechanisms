@@ -137,78 +137,133 @@ public final class FarmStorage {
         for (var dir : dirs) {
             try {
                 farms.add(load(dir));
-            } catch (IOException | InvalidConfigurationException | RuntimeException error) {
-                throw new IllegalStateException("Не удалось прочитать данные фермы " + dir.getFileName() + ": "
-                        + error.getMessage(), error);
+            } catch (InvalidFile error) {
+                throw new IllegalStateException("Cannot load farm " + dir.getFileName() + " from " + error.file
+                        + ": " + error.getMessage(), error.getCause());
+            } catch (IOException error) {
+                throw new IllegalStateException("Cannot load farm " + dir.getFileName() + " from " + dir
+                        + ": " + error, error);
             }
         }
         return farms;
     }
 
-    private StoredFarm load(Path dir) throws IOException, InvalidConfigurationException {
+    /**
+     * Load errors are read by admins in the server console, so their text is English: Cyrillic is garbled by
+     * consoles that do not use UTF-8. Domain validation messages stay in the cause.
+     */
+    private static final class InvalidFile extends Exception {
+        final Path file;
+
+        InvalidFile(Path file, String reason, Throwable cause) {
+            super(reason, cause);
+            this.file = file;
+        }
+
+        InvalidFile(Path file, String reason) {
+            this(file, reason, null);
+        }
+    }
+
+    private interface Reader<T> {
+        T read() throws InvalidFile;
+    }
+
+    /** Reads one value; any other failure, including domain validation, becomes {@code invalid <what>}. */
+    private static <T> T read(Path file, String what, Reader<T> reader) throws InvalidFile {
+        try {
+            return reader.read();
+        } catch (RuntimeException error) {
+            throw new InvalidFile(file, "invalid " + what, error);
+        }
+    }
+
+    private StoredFarm load(Path dir) throws IOException, InvalidFile {
+        var file = dir.resolve(FARM_FILE);
         var yaml = new YamlConfiguration();
-        yaml.loadFromString(Files.readString(dir.resolve(FARM_FILE), StandardCharsets.UTF_8));
-        if (yaml.getInt("format") != FARM_FORMAT) throw new IllegalArgumentException("неизвестный формат");
-        var id = UUID.fromString(required(yaml, "id"));
+        try {
+            yaml.loadFromString(Files.readString(file, StandardCharsets.UTF_8));
+        } catch (InvalidConfigurationException error) {
+            throw new InvalidFile(file, "not valid YAML", error);
+        }
+        if (yaml.getInt("format") != FARM_FORMAT) {
+            throw new InvalidFile(file, "unsupported format " + yaml.get("format") + ", expected " + FARM_FORMAT);
+        }
+        var id = read(file, "id", () -> UUID.fromString(required(file, yaml, "id")));
         if (!dir.getFileName().toString().equals(id.toString())) {
-            throw new IllegalArgumentException("каталог не совпадает с id " + id);
+            throw new InvalidFile(file, "id " + id + " does not match its directory name");
         }
-        var world = UUID.fromString(required(yaml, "world"));
-        var mechanism = new Cuboid(position(world, yaml.getIntegerList("mechanism.min")),
-                position(world, yaml.getIntegerList("mechanism.max")));
-        var blocks = new LinkedHashSet<BlockPosition>();
-        for (var block : yaml.getList("output.blocks", List.of())) {
-            if (!(block instanceof List<?> coordinates)) throw new IllegalArgumentException("неверный блок выходного контейнера");
-            blocks.add(position(world, coordinates));
-        }
-        var output = new OutputContainer(OutputContainer.Type.valueOf(required(yaml, "output.type")), blocks);
-        var state = State.valueOf(required(yaml, "state"));
-        // A profile is valid only in READY. Outside it (e.g. the state was edited by hand to force re-profiling)
-        // a leftover profile and its emulation state are ignored, like markNeedsProfiling drops them.
-        ProductionProfile profile = null;
+        var creator = read(file, "creator", () -> UUID.fromString(required(file, yaml, "creator")));
+        var state = read(file, "state", () -> State.valueOf(required(file, yaml, "state")));
+        var world = read(file, "world", () -> UUID.fromString(required(file, yaml, "world")));
+        var mechanism = read(file, "mechanism", () -> new Cuboid(
+                position(file, world, "mechanism.min", yaml.getList("mechanism.min", List.of())),
+                position(file, world, "mechanism.max", yaml.getList("mechanism.max", List.of()))));
+        var output = read(file, "output container", () -> {
+            var blocks = new LinkedHashSet<BlockPosition>();
+            for (var block : yaml.getList("output.blocks", List.of())) {
+                if (!(block instanceof List<?> coordinates)) {
+                    throw new InvalidFile(file, "output.blocks must hold [x, y, z] lists");
+                }
+                blocks.add(position(file, world, "output.blocks", coordinates));
+            }
+            return new OutputContainer(OutputContainer.Type.valueOf(required(file, yaml, "output.type")), blocks);
+        });
         var profileSection = yaml.getConfigurationSection("profile");
-        if (state == State.READY) {
-            if (profileSection == null) throw new IllegalArgumentException("нет профиля производства для READY");
-            profile = profile(profileSection);
+        if (state == State.READY && profileSection == null) {
+            throw new InvalidFile(file, "state READY requires a profile");
         }
-        var farm = new MarkedFarm(id, UUID.fromString(required(yaml, "creator")), mechanism, output, state, profile);
+        if (state != State.READY && profileSection != null) {
+            throw new InvalidFile(file, "state " + state + " must not have a profile (only READY has one)");
+        }
+        var profile = profileSection == null ? null : read(file, "profile", () -> profile(file, profileSection));
+        var farm = new MarkedFarm(id, creator, mechanism, output, state, profile);
+
         var emulationFile = dir.resolve(EMULATION_FILE);
-        if (profile == null || !Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty());
-        var emulation = emulation(Files.readAllBytes(emulationFile));
+        if (!Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty());
+        if (profile == null) throw new InvalidFile(emulationFile, "emulation state without a profile");
+        var bytes = Files.readAllBytes(emulationFile);
+        var emulation = read(emulationFile, "emulation state", () -> emulation(emulationFile, bytes));
         var produced = profile.ratesPer20Ticks().keySet();
         if (!produced.containsAll(emulation.fractions().keySet()) || !produced.containsAll(emulation.buffer().keySet())) {
-            throw new IllegalArgumentException("состояние эмуляции не соответствует профилю производства");
+            throw new InvalidFile(emulationFile, "emulation state holds items the profile does not produce");
         }
         return new StoredFarm(farm, Optional.of(emulation));
     }
 
-    private static ProductionProfile profile(ConfigurationSection section) {
+    private static ProductionProfile profile(Path file, ConfigurationSection section) throws InvalidFile {
         var rates = new EnumMap<Material, Double>(Material.class);
         var ratesSection = section.getConfigurationSection("rates-per-20-ticks");
-        if (ratesSection == null) throw new IllegalArgumentException("профиль без скоростей");
+        if (ratesSection == null) throw new InvalidFile(file, "profile.rates-per-20-ticks is missing");
         for (var key : ratesSection.getKeys(false)) {
             if (!ratesSection.isDouble(key) && !ratesSection.isInt(key)) {
-                throw new IllegalArgumentException("неверная скорость " + key);
+                throw new InvalidFile(file, "rate of " + key + " is not a number");
             }
-            rates.put(material(key), ratesSection.getDouble(key));
+            rates.put(material(file, key), ratesSection.getDouble(key));
         }
         if (!section.isLong("useful-ticks") && !section.isInt("useful-ticks")) {
-            throw new IllegalArgumentException("нет полезного участка профиля");
+            throw new InvalidFile(file, "profile.useful-ticks is missing or not a number");
         }
         return new ProductionProfile(rates, section.getLong("useful-ticks"));
     }
 
-    private static EmulationState emulation(byte[] bytes) throws IOException {
+    private static EmulationState emulation(Path file, byte[] bytes) throws InvalidFile {
         try (var in = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (in.readInt() != EMULATION_MAGIC || in.readInt() != EMULATION_FORMAT) {
-                throw new IllegalArgumentException("неизвестный формат состояния эмуляции");
+            if (in.readInt() != EMULATION_MAGIC) throw new InvalidFile(file, "not an emulation state file");
+            int format = in.readInt();
+            if (format != EMULATION_FORMAT) {
+                throw new InvalidFile(file, "unsupported format " + format + ", expected " + EMULATION_FORMAT);
             }
             var fractions = new EnumMap<Material, BigDecimal>(Material.class);
-            for (int i = in.readInt(); i > 0; i--) fractions.put(material(in.readUTF()), new BigDecimal(in.readUTF()));
+            for (int i = in.readInt(); i > 0; i--) {
+                fractions.put(material(file, in.readUTF()), new BigDecimal(in.readUTF()));
+            }
             var buffer = new EnumMap<Material, Integer>(Material.class);
-            for (int i = in.readInt(); i > 0; i--) buffer.put(material(in.readUTF()), in.readInt());
-            if (in.read() != -1) throw new IllegalArgumentException("лишние данные в состоянии эмуляции");
+            for (int i = in.readInt(); i > 0; i--) buffer.put(material(file, in.readUTF()), in.readInt());
+            if (in.read() != -1) throw new InvalidFile(file, "unexpected trailing data");
             return new EmulationState(fractions, buffer);
+        } catch (IOException error) {
+            throw new InvalidFile(file, "truncated or unreadable", error);
         }
     }
 
@@ -239,23 +294,24 @@ public final class FarmStorage {
         return List.of(block.x(), block.y(), block.z());
     }
 
-    private static BlockPosition position(UUID world, List<?> coordinates) {
+    private static BlockPosition position(Path file, UUID world, String path, List<?> coordinates)
+            throws InvalidFile {
         if (coordinates.size() != 3 || !coordinates.stream().allMatch(Integer.class::isInstance)) {
-            throw new IllegalArgumentException("неверные координаты " + coordinates);
+            throw new InvalidFile(file, path + " must be [x, y, z] integers, found " + coordinates);
         }
         return new BlockPosition(world, (Integer) coordinates.get(0), (Integer) coordinates.get(1),
                 (Integer) coordinates.get(2));
     }
 
-    private static Material material(String key) {
+    private static Material material(Path file, String key) throws InvalidFile {
         var material = Material.matchMaterial(key);
-        if (material == null || material.isLegacy()) throw new IllegalArgumentException("неизвестный предмет " + key);
+        if (material == null || material.isLegacy()) throw new InvalidFile(file, "unknown item " + key);
         return material;
     }
 
-    private static String required(ConfigurationSection section, String path) {
+    private static String required(Path file, ConfigurationSection section, String path) throws InvalidFile {
         var value = section.getString(path);
-        if (value == null) throw new IllegalArgumentException("нет поля " + path);
+        if (value == null) throw new InvalidFile(file, path + " is missing");
         return value;
     }
 }

@@ -81,21 +81,6 @@ class FarmStorageTest {
     }
 
     @Test
-    void handEditedStateBelowReadyDropsTheLeftoverProfileAndEmulation() throws IOException {
-        var storage = new FarmStorage(root);
-        var ready = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
-                State.READY, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
-        storage.save(ready);
-        storage.saveEmulation(ready.id(), new EmulationState(Map.of(), Map.of(Material.KELP, 3)));
-        var file = root.resolve(ready.id().toString()).resolve("farm.yml");
-        Files.writeString(file, Files.readString(file).replace("state: READY", "state: NEEDS_PROFILING"));
-
-        var expected = new MarkedFarm(ready.id(), ready.creatorId(), ready.mechanism(), ready.output(),
-                State.NEEDS_PROFILING, null);
-        assertEquals(List.of(new FarmStorage.StoredFarm(expected, Optional.empty())), storage.loadAll());
-    }
-
-    @Test
     void emulationStateOfAnotherProfileFailsLoudly() {
         var storage = new FarmStorage(root);
         var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
@@ -118,6 +103,21 @@ class FarmStorageTest {
         Files.writeString(dir.resolve("farm.yml"), "state: READY\n");
         var error = assertThrows(IllegalStateException.class, () -> new FarmStorage(root).loadAll());
         assertTrue(error.getMessage().contains(dir.getFileName().toString()), error.getMessage());
+    }
+
+    @Test
+    void profileOutsideReadyIsRejectedWithAnEnglishConsoleMessage() throws IOException {
+        var storage = new FarmStorage(root);
+        var ready = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(),
+                State.READY, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
+        storage.save(ready);
+        var file = root.resolve(ready.id().toString()).resolve("farm.yml");
+        Files.writeString(file, Files.readString(file).replace("state: READY", "state: NEEDS_PROFILING"));
+
+        var error = assertThrows(IllegalStateException.class, storage::loadAll);
+
+        assertEquals("Cannot load farm " + ready.id() + " from " + file
+                + ": state NEEDS_PROFILING must not have a profile (only READY has one)", error.getMessage());
     }
 
     @Test
