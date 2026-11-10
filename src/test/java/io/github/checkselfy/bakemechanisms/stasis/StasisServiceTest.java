@@ -149,6 +149,52 @@ class StasisServiceTest {
         verify(world, never()).restore(any(), any());
     }
 
+    @Test
+    void recoveryOverStoredFarmsPersistsOnlyRealChanges() throws Exception {
+        var farm = ready();
+        var stasisFarm = registry.markStasis(farm.id());
+        when(store.loadActive()).thenReturn(List.of(new SavedSnapshot(stasisFarm, new byte[] { 1 })));
+        var changes = new java.util.ArrayList<FarmRegistry.MarkedFarm>();
+
+        // Storage already holds the STASIS farm: nothing to persist.
+        var upToDate = new FarmRegistry(1, changes::add);
+        upToDate.restore(stasisFarm);
+        new StasisService(upToDate, world, store).recover();
+        assertTrue(changes.isEmpty());
+
+        // Storage lags behind the manifest (crash before farm.yml was written): storage catches up.
+        var lagging = new FarmRegistry(1, changes::add);
+        lagging.restore(farm);
+        new StasisService(lagging, world, store).recover();
+        assertEquals(List.of(stasisFarm), changes);
+        assertEquals(stasisFarm, lagging.requireCreator(farm.id(), creator));
+    }
+
+    @Test
+    void storedStasisWithoutActiveSnapshotReturnsToNeedsProfiling() throws Exception {
+        var farm = ready();
+        var stasisFarm = registry.markStasis(farm.id());
+        when(store.loadActive()).thenReturn(List.of());
+        var loaded = new FarmRegistry(1);
+        loaded.restore(stasisFarm);
+
+        var reset = new StasisService(loaded, world, store).recover();
+
+        assertEquals(List.of(farm.id()), reset);
+        assertEquals(State.NEEDS_PROFILING, loaded.requireCreator(farm.id(), creator).state());
+        verifyNoInteractions(world);
+    }
+
+    @Test
+    void runningVerificationEmulationBlocksStasis() {
+        var farm = ready();
+        var guarded = new StasisService(registry, world, store, farm.id()::equals);
+        var error = assertThrows(IllegalArgumentException.class, () -> guarded.enter(farm.id(), creator));
+        assertTrue(error.getMessage().contains("stop-emulate"));
+        verifyNoInteractions(world, store);
+        assertEquals(State.READY, registry.requireCreator(farm.id(), creator).state());
+    }
+
     private FarmRegistry.MarkedFarm ready() {
         var point = new BlockPosition(worldId, 0, 64, 0);
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(

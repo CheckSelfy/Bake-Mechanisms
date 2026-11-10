@@ -4,7 +4,6 @@ import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.State;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,7 +21,7 @@ public final class ProfilingService {
     private final ProfilingWorld world;
     private final ProfilingSettings settings;
     private final Map<UUID, Session> sessions = new LinkedHashMap<>();
-    private final Map<ChunkPosition, Integer> ticketHolders = new HashMap<>();
+    private final ChunkTickets tickets;
 
     private static final class Session {
         final MarkedFarm farm;
@@ -38,9 +37,16 @@ public final class ProfilingService {
     }
 
     public ProfilingService(FarmRegistry registry, ProfilingWorld world, ProfilingSettings settings) {
+        this(registry, world, settings, new ChunkTickets(world));
+    }
+
+    /** @param tickets shared with other features that force-load chunks of the same plugin */
+    public ProfilingService(FarmRegistry registry, ProfilingWorld world, ProfilingSettings settings,
+                            ChunkTickets tickets) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.world = Objects.requireNonNull(world, "world");
         this.settings = Objects.requireNonNull(settings, "settings");
+        this.tickets = Objects.requireNonNull(tickets, "tickets");
     }
 
     public void start(UUID farmId, UUID actorId) {
@@ -53,22 +59,18 @@ public final class ProfilingService {
         if (world.hasPlayerInside(farm.mechanism())) {
             throw new IllegalArgumentException("Внутри механизма находится игрок. Выйдите из кубоида и повторите.");
         }
-        var acquired = new ArrayList<ChunkPosition>();
+        var chunks = chunksOf(farm);
+        tickets.acquireAll(chunks);
         OutputSnapshot baseline;
         try {
-            for (var chunk : chunksOf(farm)) {
-                acquire(chunk);
-                acquired.add(chunk);
-            }
             baseline = world.readOutput(farm.output());
         } catch (IllegalStateException error) {
-            acquired.forEach(this::release);
+            chunks.forEach(tickets::release);
             throw new IllegalArgumentException(error.getMessage(), error);
         } catch (RuntimeException error) {
-            acquired.forEach(this::release);
+            chunks.forEach(tickets::release);
             throw error;
         }
-        var chunks = new LinkedHashSet<>(acquired);
         world.lockOutput(farm.output());
         registry.markProfiling(farm.id());
         sessions.put(farm.id(), new Session(farm, chunks, new ProfileCalculator(baseline, settings)));
@@ -137,7 +139,7 @@ public final class ProfilingService {
 
     private void end(Session session) {
         sessions.remove(session.farm.id());
-        session.chunks.forEach(this::release);
+        session.chunks.forEach(tickets::release);
     }
 
     private static Set<ChunkPosition> chunksOf(MarkedFarm farm) {
@@ -149,20 +151,7 @@ public final class ProfilingService {
                 chunks.add(new ChunkPosition(min.worldId(), x, z));
             }
         }
-        for (var block : farm.output().blocks()) {
-            chunks.add(new ChunkPosition(block.worldId(), block.x() >> 4, block.z() >> 4));
-        }
+        for (var block : farm.output().blocks()) chunks.add(ChunkPosition.of(block));
         return chunks;
-    }
-
-    private void acquire(ChunkPosition chunk) {
-        if (ticketHolders.merge(chunk, 1, Integer::sum) == 1) world.addChunkTicket(chunk);
-    }
-
-    private void release(ChunkPosition chunk) {
-        if (ticketHolders.merge(chunk, -1, Integer::sum) == 0) {
-            ticketHolders.remove(chunk);
-            world.removeChunkTicket(chunk);
-        }
     }
 }

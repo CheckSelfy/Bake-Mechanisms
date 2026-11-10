@@ -6,8 +6,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
-/** In-memory registration; call on the server thread. Persistence belongs to issue #8. */
+/**
+ * Registered farms; call on the server thread. Every mutation is reported to the change listener,
+ * which persists it.
+ */
 public final class FarmRegistry {
     public static final long DEFAULT_MAX_VOLUME = 262_144;
 
@@ -24,11 +28,18 @@ public final class FarmRegistry {
     }
 
     private final long maxVolume;
+    private final Consumer<MarkedFarm> onChange;
     private final Map<UUID, MarkedFarm> farms = new LinkedHashMap<>();
 
     public FarmRegistry(long maxVolume) {
+        this(maxVolume, farm -> { });
+    }
+
+    /** @param onChange receives the new state of a farm after each registration or state change */
+    public FarmRegistry(long maxVolume, Consumer<MarkedFarm> onChange) {
         if (maxVolume < 1) throw new IllegalArgumentException("Предел объёма должен быть положительным.");
         this.maxVolume = maxVolume;
+        this.onChange = Objects.requireNonNull(onChange, "onChange");
     }
 
     public MarkedFarm register(UUID creatorId, Cuboid mechanism, OutputContainer output) {
@@ -38,6 +49,37 @@ public final class FarmRegistry {
         if (mechanism.exceedsVolume(maxVolume)) {
             throw new IllegalArgumentException("Превышен предел объёма механизма: " + maxVolume);
         }
+        validate(mechanism, output);
+        var farm = new MarkedFarm(UUID.randomUUID(), creatorId, mechanism, output, State.NEEDS_PROFILING, null);
+        farms.put(farm.id(), farm);
+        onChange.accept(farm);
+        return farm;
+    }
+
+    /**
+     * Loads a farm saved before a restart under the same placement rules. The volume limit is not rechecked:
+     * it governs new registrations, and lowering it must not drop existing farms. Unfinished profiling is never
+     * stitched across a restart: a farm saved in {@link State#PROFILING} returns as {@link State#NEEDS_PROFILING},
+     * and only that change is reported to the listener.
+     */
+    public MarkedFarm restore(MarkedFarm saved) {
+        Objects.requireNonNull(saved, "saved");
+        if (farms.containsKey(saved.id())) throw new IllegalArgumentException("Ферма уже загружена: " + saved.id());
+        validate(saved.mechanism(), saved.output());
+        var farm = saved.state() == State.PROFILING
+                ? new MarkedFarm(saved.id(), saved.creatorId(), saved.mechanism(), saved.output(),
+                        State.NEEDS_PROFILING, null)
+                : saved;
+        farms.put(farm.id(), farm);
+        if (farm != saved) onChange.accept(farm);
+        return farm;
+    }
+
+    public List<MarkedFarm> all() {
+        return List.copyOf(farms.values());
+    }
+
+    private void validate(Cuboid mechanism, OutputContainer output) {
         for (var block : output.blocks()) {
             if (!mechanism.min().worldId().equals(block.worldId())) {
                 throw new IllegalArgumentException("Механизм и выходной контейнер должны быть в одном мире.");
@@ -62,9 +104,6 @@ public final class FarmRegistry {
                 throw new IllegalArgumentException("Механизм включает выходной контейнер другой фермы.");
             }
         }
-        var farm = new MarkedFarm(UUID.randomUUID(), creatorId, mechanism, output, State.NEEDS_PROFILING, null);
-        farms.put(farm.id(), farm);
-        return farm;
     }
 
     /** All access to an existing registration must pass this creator check. */
@@ -93,15 +132,22 @@ public final class FarmRegistry {
         return replace(farmId, State.STASIS, farm.profile());
     }
 
-    /** Snapshot recovery only; generic profile/buffer persistence belongs to #8. */
+    /**
+     * Snapshot recovery: the stasis manifest is authoritative for STASIS. A farm already loaded from storage
+     * must have the same placement; a farm missing from storage is registered under the usual placement rules.
+     * Any difference from the loaded state is reported to the listener so storage catches up.
+     */
     public void recoverStasis(MarkedFarm farm) {
         if (farm.state() != State.STASIS) throw new IllegalArgumentException("Ожидается STASIS.");
         var existing = farms.get(farm.id());
-        if (existing != null && (!existing.creatorId().equals(farm.creatorId())
-                || !existing.mechanism().equals(farm.mechanism()) || !existing.output().equals(farm.output()))) {
+        if (existing == null) {
+            validate(farm.mechanism(), farm.output());
+        } else if (!existing.creatorId().equals(farm.creatorId())
+                || !existing.mechanism().equals(farm.mechanism()) || !existing.output().equals(farm.output())) {
             throw new IllegalArgumentException("Снимок конфликтует с регистрацией фермы " + farm.id());
         }
         farms.put(farm.id(), farm);
+        if (!farm.equals(existing)) onChange.accept(farm);
     }
 
     /** Drops any previous profile: it must never be reused. */
@@ -114,6 +160,7 @@ public final class FarmRegistry {
         if (farm == null) throw new IllegalArgumentException("Ферма не найдена.");
         var updated = new MarkedFarm(farm.id(), farm.creatorId(), farm.mechanism(), farm.output(), state, profile);
         farms.put(farmId, updated);
+        onChange.accept(updated);
         return updated;
     }
 

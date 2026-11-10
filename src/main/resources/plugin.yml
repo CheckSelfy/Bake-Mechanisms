@@ -5,6 +5,6 @@ api-version: '26.3'
 description: Profiles and emulates resource-producing farms.
 commands:
   bake:
-    description: Разметка, профилирование, стазис и восстановление автоферм.
-    usage: /bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID> | stasis <UUID> | restore <UUID> | clear
+    description: Разметка, профилирование, проверочная эмуляция, стазис и восстановление автоферм.
+    usage: /bake wand | output | register | list | info <UUID> | profile <UUID> | cancel <UUID> | start-emulate <UUID> | stop-emulate <UUID> | stasis <UUID> | restore <UUID> | clear
     aliases: [bm]

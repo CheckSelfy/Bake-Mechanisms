@@ -9,12 +9,14 @@ plugins {
 }
 
 group = "io.github.checkselfy"
-version = "0.1.0"
+// version comes from gradle.properties; release builds override it with -Pversion=<tag without v>.
 
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
 }
+
+val mockitoAgent = configurations.create("mockitoAgent")
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.3.build.246-stable")
@@ -23,10 +25,15 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.mockito:mockito-core:5.20.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    mockitoAgent("org.mockito:mockito-core:5.20.0") { isTransitive = false }
 }
 
 tasks.test {
     useJUnitPlatform()
+    // Load Mockito as an explicit agent: JDK 21+ restricts dynamic self-attach,
+    // which fails on some machines and CI runners.
+    val agentPath = mockitoAgent.asPath
+    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:$agentPath") })
 }
 
 java {

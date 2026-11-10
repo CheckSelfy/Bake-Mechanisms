@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /** Owns snapshot lifecycle; does not produce items or modify the emulation buffer. Server thread only. */
 public final class StasisService {
@@ -16,18 +17,37 @@ public final class StasisService {
     private final SnapshotStore store;
     private final Map<UUID, SavedSnapshot> active = new LinkedHashMap<>();
 
+    private final Predicate<UUID> emulating;
+
     public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store) {
+        this(registry, world, store, farmId -> false);
+    }
+
+    /** @param emulating whether a verification emulation runs for the farm; stasis then waits for it to stop */
+    public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store, Predicate<UUID> emulating) {
         this.registry = registry;
         this.world = world;
         this.store = store;
+        this.emulating = emulating;
     }
 
-    /** Re-register protected snapshots without restoring the original mechanism. */
-    public void recover() throws IOException {
+    /**
+     * Re-register protected snapshots without restoring the original mechanism. A farm stored as STASIS without
+     * an active snapshot was restored right before a crash (the manifest is removed only after a successful
+     * restore), so it returns to NEEDS_PROFILING.
+     *
+     * @return farms moved to NEEDS_PROFILING for lack of a snapshot
+     */
+    public List<UUID> recover() throws IOException {
         for (var snapshot : store.loadActive()) {
             registry.recoverStasis(snapshot.farm());
             active.put(snapshot.farm().id(), snapshot);
         }
+        var orphaned = registry.all().stream()
+                .filter(farm -> farm.state() == State.STASIS && !active.containsKey(farm.id()))
+                .map(MarkedFarm::id).toList();
+        orphaned.forEach(registry::markNeedsProfiling);
+        return orphaned;
     }
 
     public List<MarkedFarm> activeFarms() {
@@ -37,6 +57,9 @@ public final class StasisService {
     public void enter(UUID farmId, UUID actorId) {
         var farm = registry.requireCreator(farmId, actorId);
         if (farm.state() != State.READY) throw new IllegalArgumentException("Стазис доступен только из READY.");
+        if (emulating.test(farmId)) {
+            throw new IllegalArgumentException("Остановите проверочную эмуляцию: /bake stop-emulate " + farmId + ".");
+        }
         requireNoPlayers(farm);
         SavedSnapshot snapshot;
         try {
