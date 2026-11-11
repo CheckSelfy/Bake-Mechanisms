@@ -40,6 +40,8 @@ public final class MarkingController implements Listener, TabExecutor {
             + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | sprint " + FARM_USAGE
             + " (ускоряет весь сервер) | cancel " + FARM_USAGE + " | delete " + FARM_USAGE + " [confirm] | clear";
     private static final String CONFIRM = "confirm";
+    /** Permission of the vanilla {@code /tick} command; {@code /bake sprint} needs it too. */
+    static final String TICK_PERMISSION = "minecraft.command.tick";
     private final JavaPlugin plugin;
     private final FarmRegistry registry;
     private final PaperOutputResolver outputs;
@@ -112,7 +114,10 @@ public final class MarkingController implements Listener, TabExecutor {
                             + farm.reference());
                     show(player, registry.requireCreator(farm.id(), actor));
                 }
-                case "sprint" -> sprint(player, farm(player, args, "/bake sprint " + FARM_USAGE).farm());
+                case "sprint" -> {
+                    requireTickPermission(player);
+                    sprint(player, farm(player, args, "/bake sprint " + FARM_USAGE).farm());
+                }
                 case "cancel" -> {
                     var farm = farm(player, args, "/bake cancel " + FARM_USAGE).farm();
                     profiling.cancel(farm.id(), actor);
@@ -171,6 +176,13 @@ public final class MarkingController implements Listener, TabExecutor {
 
     private record FarmTarget(FarmRegistry.MarkedFarm farm, List<String> rest) { }
 
+    private static void requireTickPermission(Player player) {
+        if (!player.hasPermission(TICK_PERMISSION)) {
+            throw new IllegalArgumentException("Недостаточно прав: /bake sprint использует /tick sprint, а вам"
+                    + " не разрешено выполнять /tick.");
+        }
+    }
+
     /**
      * Speeds the server up to the end of the farm's profiling with the vanilla {@code /tick sprint}, run as the
      * player: only players allowed to use {@code /tick} can do it.
@@ -181,9 +193,11 @@ public final class MarkingController implements Listener, TabExecutor {
             player.sendMessage("Профилирование фермы " + farm.title() + " уже завершается.");
             return;
         }
+        if (!player.performCommand("tick sprint " + remaining)) {
+            throw new IllegalArgumentException("Ускорить сервер не удалось: команда /tick sprint не выполнена.");
+        }
         player.sendMessage("Ускоряем сервер на " + remaining + " тиков до конца профилирования фермы "
                 + farm.title() + ". Ускорение действует на весь сервер, включая другие профилируемые фермы.");
-        player.performCommand("tick sprint " + remaining);
     }
 
     private void giveWand(Player player) {
@@ -327,9 +341,12 @@ public final class MarkingController implements Listener, TabExecutor {
         if (!(sender instanceof Player player)) return List.of();
         if (args.length == 1) {
             var prefix = args[0].toLowerCase(Locale.ROOT);
-            return COMMANDS.stream().filter(value -> value.startsWith(prefix)).toList();
+            return COMMANDS.stream().filter(value -> value.startsWith(prefix))
+                    .filter(value -> !value.equals("sprint") || player.hasPermission(TICK_PERMISSION)).toList();
         }
-        if (!FARM_COMMANDS.contains(args[0].toLowerCase(Locale.ROOT))) return List.of();
+        var operation = args[0].toLowerCase(Locale.ROOT);
+        if (!FARM_COMMANDS.contains(operation)) return List.of();
+        if (operation.equals("sprint") && !player.hasPermission(TICK_PERMISSION)) return List.of();
         var farms = registry.findByCreator(player.getUniqueId());
         var reference = FarmArguments.complete(farms, args, 1);
         if (reference != null) return reference;

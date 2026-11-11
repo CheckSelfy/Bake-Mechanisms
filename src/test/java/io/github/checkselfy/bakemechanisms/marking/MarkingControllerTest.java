@@ -39,6 +39,7 @@ class MarkingControllerTest {
     private final PaperOutputResolver outputs = mock(PaperOutputResolver.class);
     private final Command command = mock(Command.class);
     private final ItemStack wand = mock(ItemStack.class);
+    private final ProfilingService profiling = mock(ProfilingService.class);
     private MarkingController controller;
 
     @BeforeEach
@@ -62,8 +63,7 @@ class MarkingControllerTest {
         when(meta.getPersistentDataContainer()).thenReturn(pdc);
         when(pdc.get(new NamespacedKey("bakemechanisms", "marking_wand"), PersistentDataType.BYTE))
                 .thenReturn((byte) 1);
-        controller = new MarkingController(plugin, registry, outputs, mock(ProfilingService.class),
-                mock(FarmRemoval.class));
+        controller = new MarkingController(plugin, registry, outputs, profiling, mock(FarmRemoval.class));
     }
 
     @Test
@@ -253,6 +253,59 @@ class MarkingControllerTest {
         var event = event(action, block);
         controller.onInteract(event);
         return event;
+    }
+
+    @Test
+    void sprintIsRefusedAndHiddenWithoutTheRightToUseTick() {
+        selectCorners();
+        selectOutput(32);
+        run("register", "Iron");
+        when(player.hasPermission("minecraft.command.tick")).thenReturn(false);
+
+        run("sprint", "Iron");
+
+        verify(player).sendMessage(contains("/tick"));
+        verify(player, never()).sendMessage(contains("Ускоряем"));
+        verify(player, never()).performCommand(anyString());
+        verifyNoInteractions(profiling);
+        assertFalse(controller.onTabComplete(player, command, "bake", new String[] { "" }).contains("sprint"));
+        assertEquals(java.util.List.of(),
+                controller.onTabComplete(player, command, "bake", new String[] { "sprint", "" }));
+    }
+
+    @Test
+    void sprintRunsTickSprintForTheRemainingTicksAsThePlayer() {
+        selectCorners();
+        selectOutput(32);
+        run("register", "Iron");
+        var farm = registry.findByCreator(creator).getFirst();
+        when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
+        when(profiling.remainingTicks(farm.id(), creator)).thenReturn(1200L);
+        when(player.performCommand("tick sprint 1200")).thenReturn(true);
+
+        run("sprint", "Iron");
+
+        verify(player).performCommand("tick sprint 1200");
+        verify(player).sendMessage(contains("1200"));
+        assertTrue(controller.onTabComplete(player, command, "bake", new String[] { "sp" }).contains("sprint"));
+        assertEquals(java.util.List.of("Iron", "--id"),
+                controller.onTabComplete(player, command, "bake", new String[] { "sprint", "" }));
+    }
+
+    @Test
+    void sprintReportsAFailureWhenTheServerDoesNotRunTick() {
+        selectCorners();
+        selectOutput(32);
+        run("register", "Iron");
+        var farm = registry.findByCreator(creator).getFirst();
+        when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
+        when(profiling.remainingTicks(farm.id(), creator)).thenReturn(1200L);
+        when(player.performCommand("tick sprint 1200")).thenReturn(false);
+
+        run("sprint", "Iron");
+
+        verify(player, never()).sendMessage(contains("Ускоряем"));
+        verify(player).sendMessage(contains("не удалось"));
     }
 
     private void run(String... args) {
