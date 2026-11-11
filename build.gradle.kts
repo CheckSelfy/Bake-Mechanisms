@@ -211,8 +211,20 @@ tasks.register<JavaExec>("stasisSmoke") {
         tasks.jar.get().archiveFile.get().asFile.copyTo(smokeDir.resolve("plugins/bake-mechanisms.jar"), overwrite = true)
         stasisSmokeJar.get().archiveFile.get().asFile.copyTo(smokeDir.resolve("plugins/bake-stasis-smoke.jar"), overwrite = true)
         smokeDir.resolve("server.properties").writeText(
-            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\n"
+            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\npause-when-empty-seconds=-1\n"
         )
+        smokeDir.resolve("spigot.yml").writeText("""
+            world-settings:
+              default:
+                entity-activation-range:
+                  animals: 0
+                  monsters: 0
+                  villagers: 0
+                  raiders: 0
+                  water: 0
+                  flying-monsters: 0
+                  misc: 0
+        """.trimIndent())
         Files.deleteIfExists(smokeDir.resolve("logs/latest.log").toPath())
     }
     doLast {
@@ -221,6 +233,7 @@ tasks.register<JavaExec>("stasisSmoke") {
             || !log.contains("SIGN_STASIS_SMOKE_PASSED")
             || !log.contains("EXTENDED_BLOCK_STASIS_SMOKE_PASSED")
             || !log.contains("MOVING_PISTON_STASIS_SMOKE_PASSED")
+            || !log.contains("MOB_BEHAVIOR_SMOKE_PASSED")
             || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
             throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
         }

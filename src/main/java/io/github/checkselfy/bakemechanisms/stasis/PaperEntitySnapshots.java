@@ -22,7 +22,7 @@ import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.plugin.Plugin;
 
-/** Public Paper serialization API, deliberately pinned to 26.3. No NMS or reflection. */
+/** Public Paper NBT serialization, with a pinned target-memory adapter for omitted AI references. */
 @SuppressWarnings("deprecation")
 public final class PaperEntitySnapshots {
     // Explicitly audited against Paper 26.3 build 246; future API types require another native test run.
@@ -141,8 +141,19 @@ public final class PaperEntitySnapshots {
                                 + cart.getType() + ". Верните стандартные настройки и дождитесь сброса повреждения.");
                     }
                 }
+                for (var member : members) if (member instanceof Mob mob && mob.getTarget() != null) {
+                    if (!(copies.get(member.getUniqueId()) instanceof Mob copyMob)) {
+                        throw new IllegalStateException("Источник цели не является мобом в снимке.");
+                    }
+                    // Test compatibility on the detached copy before publishing a snapshot or removing originals.
+                    PaperMobTargets.set(copyMob, mob.getTarget());
+                }
             }
-            result.add(new SnapshotPayload.EntityGroup(root.getUniqueId(), members.stream().map(Entity::getUniqueId).toList(), data));
+            var targets = new LinkedHashMap<UUID, UUID>();
+            for (var member : members) if (member instanceof Mob mob && mob.getTarget() != null) {
+                targets.put(member.getUniqueId(), mob.getTarget().getUniqueId());
+            }
+            result.add(new SnapshotPayload.EntityGroup(root.getUniqueId(), members.stream().map(Entity::getUniqueId).toList(), data, targets));
         }
         return List.copyOf(result);
     }
@@ -157,6 +168,11 @@ public final class PaperEntitySnapshots {
             if (!root.getUniqueId().equals(group.rootId())
                     || !new HashSet<>(group.members()).equals(new HashSet<>(members.stream().map(Entity::getUniqueId).toList()))) {
                 throw new IllegalStateException("Состав группы сущностей не совпадает со снимком.");
+            }
+            for (var source : group.targets().keySet()) {
+                if (members.stream().noneMatch(entity -> entity.getUniqueId().equals(source) && entity instanceof Mob)) {
+                    throw new IllegalStateException("Источник сохранённой цели не является мобом в снимке.");
+                }
             }
             result.add(root);
         }
@@ -189,6 +205,35 @@ public final class PaperEntitySnapshots {
         }
     }
 
+    /** Reconnect only after every group has spawned, including targets from other passenger trees. */
+    public void restoreTargets(List<Entity> roots, List<SnapshotPayload.EntityGroup> groups) {
+        var restored = new LinkedHashMap<UUID, Entity>();
+        for (var root : roots) for (var member : tree(root)) restored.put(member.getUniqueId(), member);
+        for (var group : groups) for (var link : group.targets().entrySet()) {
+            if (!(restored.get(link.getKey()) instanceof Mob mob)) {
+                throw new IllegalStateException("Источник сохранённой цели не является восстановленным мобом.");
+            }
+            var target = restored.containsKey(link.getValue()) ? restored.get(link.getValue())
+                    : plugin.getServer().getEntity(link.getValue());
+            if (!(target instanceof LivingEntity living) || !living.isValid() || living.isDead()
+                    || living.isInvulnerable() || !living.getWorld().equals(mob.getWorld())
+                    || living instanceof Player player && (!player.isOnline()
+                        || player.getGameMode() == org.bukkit.GameMode.CREATIVE
+                        || player.getGameMode() == org.bukkit.GameMode.SPECTATOR)) {
+                if (restored.containsKey(link.getValue())) {
+                    throw new IllegalStateException("Цель внутри снимка не восстановлена или недоступна: " + link.getValue());
+                }
+                // External targets may die, log out, unload or change dimension while the farm is in stasis.
+                // Never recreate/teleport them or keep the whole farm in stasis because of an obsolete reference.
+                PaperMobTargets.set(mob, null);
+                plugin.getLogger().info("Цель " + link.getValue() + " моба " + link.getKey()
+                        + " недоступна; после восстановления AI выберет новую цель.");
+                continue;
+            }
+            PaperMobTargets.set(mob, living);
+        }
+    }
+
     private static void validateType(Entity entity) {
         if (entity instanceof Player || !SUPPORTED.contains(entity.getType())) {
             throw new IllegalStateException("Нет проверенного сериализатора сущности " + entity.getType());
@@ -206,10 +251,6 @@ public final class PaperEntitySnapshots {
         if (entity.hasFixedPose()) {
             throw new IllegalStateException("NBT не сохраняет принудительно закреплённую позу " + entity.getType()
                     + ". Снимите фиксацию позы перед стазисом.");
-        }
-        if (entity instanceof Mob mob && mob.getTarget() != null) {
-            throw new IllegalStateException("NBT не сохраняет активную цель моба " + entity.getType()
-                    + ". Дождитесь потери цели перед стазисом.");
         }
         if (entity instanceof LivingEntity living && !living.getCollidableExemptions().isEmpty()) {
             throw new IllegalStateException("NBT не сохраняет индивидуальные исключения столкновений " + entity.getType());

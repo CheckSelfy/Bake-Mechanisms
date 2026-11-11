@@ -42,8 +42,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                 checkSnapshots();
                 getLogger().info("BLOCK_STASIS_SMOKE_PASSED");
                 MovingPistonCheck.run(this, error -> {
-                    if (error != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
-                    getServer().shutdown();
+                    if (error != null) {
+                        getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
+                        getServer().shutdown();
+                    } else MobBehaviorCheck.run(this, behaviorError -> {
+                        if (behaviorError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", behaviorError);
+                        getServer().shutdown();
+                    });
                 });
             } catch (Throwable error) {
                 getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);

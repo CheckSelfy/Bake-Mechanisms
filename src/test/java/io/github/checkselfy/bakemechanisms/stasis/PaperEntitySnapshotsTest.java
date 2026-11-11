@@ -43,6 +43,7 @@ class PaperEntitySnapshotsTest {
     @BeforeEach void setup() {
         var plugin = mock(Plugin.class);
         when(plugin.getServer()).thenReturn(server);
+        when(plugin.getLogger()).thenReturn(java.util.logging.Logger.getAnonymousLogger());
         when(server.getUnsafe()).thenReturn(serialization);
         snapshots = new PaperEntitySnapshots(plugin);
     }
@@ -121,13 +122,10 @@ class PaperEntitySnapshotsTest {
         order.verify(cart).remove();
     }
 
-    @Test void transientTargetPoseCollisionRulesAndPickupPolicyAreRejectedBeforeSerialization() {
+    @Test void transientPoseCollisionRulesAndPickupPolicyAreRejectedBeforeSerialization() {
         var mob = mock(org.bukkit.entity.Zombie.class);
         initialize(mob, EntityType.ZOMBIE);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(mob));
-        when(mob.getTarget()).thenReturn(mock(org.bukkit.entity.Cow.class));
-        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
-        when(mob.getTarget()).thenReturn(null);
         when(mob.hasFixedPose()).thenReturn(true);
         assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
         when(mob.hasFixedPose()).thenReturn(false);
@@ -141,6 +139,76 @@ class PaperEntitySnapshotsTest {
         verifyNoInteractions(serialization);
         verify(mob, never()).remove();
         verify(item, never()).remove();
+    }
+
+    @Test void activeTargetIsRecordedSeparatelyAndVerifiedOnDetachedCopy() {
+        var mob = mock(org.bukkit.entity.Zombie.class);
+        initialize(mob, EntityType.ZOMBIE);
+        var target = mock(org.bukkit.entity.Cow.class);
+        initialize(target, EntityType.COW);
+        when(mob.getTarget()).thenReturn(target);
+        var copy = mock(org.bukkit.entity.Zombie.class);
+        initialize(copy, EntityType.ZOMBIE);
+        var id = mob.getUniqueId();
+        when(copy.getUniqueId()).thenReturn(id);
+        var copiedTarget = new java.util.concurrent.atomic.AtomicReference<org.bukkit.entity.LivingEntity>();
+        doAnswer(call -> { copiedTarget.set(call.getArgument(0)); return null; }).when(copy).setTarget(any());
+        when(copy.getTarget()).thenAnswer(call -> copiedTarget.get());
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(mob));
+        when(serialization.serializeEntity(mob, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(copy);
+        var group = snapshots.capture(world, region).getFirst();
+        assertEquals(java.util.Map.of(id, target.getUniqueId()), group.targets());
+        verify(copy).setTarget(target);
+        verify(mob, never()).remove();
+        verify(copy, never()).spawnAt(any(), any());
+    }
+
+    @Test void targetInAnotherGroupIsConnectedAfterBothGroupsSpawn() {
+        var mob = mock(org.bukkit.entity.Zombie.class);
+        initialize(mob, EntityType.ZOMBIE);
+        var target = mock(org.bukkit.entity.Cow.class);
+        initialize(target, EntityType.COW);
+        var assigned = new java.util.concurrent.atomic.AtomicReference<org.bukkit.entity.LivingEntity>();
+        doAnswer(call -> { assigned.set(call.getArgument(0)); return null; }).when(mob).setTarget(any());
+        when(mob.getTarget()).thenAnswer(call -> assigned.get());
+        when(mob.spawnAt(any(), any())).thenReturn(true);
+        when(target.spawnAt(any(), any())).thenReturn(true);
+        var groups = List.of(new SnapshotPayload.EntityGroup(mob.getUniqueId(), List.of(mob.getUniqueId()), new byte[] { 1 },
+                java.util.Map.of(mob.getUniqueId(), target.getUniqueId())));
+        snapshots.spawn(List.of(mob, target));
+        snapshots.restoreTargets(List.of(mob, target), groups);
+        var order = inOrder(mob, target);
+        order.verify(mob).spawnAt(any(), any());
+        order.verify(target).spawnAt(any(), any());
+        order.verify(mob).setTarget(target);
+        assertSame(target, mob.getTarget());
+    }
+
+    @Test void missingExternalTargetIsClearedWithoutSpawningOrRemovingAnything() {
+        var mob = mock(org.bukkit.entity.Zombie.class);
+        initialize(mob, EntityType.ZOMBIE);
+        var id = mob.getUniqueId();
+        var external = UUID.randomUUID();
+        snapshots.restoreTargets(List.of(mob), List.of(new SnapshotPayload.EntityGroup(id, List.of(id), new byte[] { 1 },
+                java.util.Map.of(id, external))));
+        verify(mob).setTarget(null);
+        verify(mob, never()).remove();
+        verify(mob, never()).spawnAt(any(), any());
+    }
+
+    @Test void externalTargetThatChangedWorldIsCleared() {
+        var mob = mock(org.bukkit.entity.Zombie.class);
+        initialize(mob, EntityType.ZOMBIE);
+        var target = mock(org.bukkit.entity.Cow.class);
+        initialize(target, EntityType.COW);
+        var targetId = target.getUniqueId();
+        when(target.getWorld()).thenReturn(mock(World.class));
+        when(server.getEntity(targetId)).thenReturn(target);
+        snapshots.restoreTargets(List.of(mob), List.of(new SnapshotPayload.EntityGroup(mob.getUniqueId(),
+                List.of(mob.getUniqueId()), new byte[] { 1 }, java.util.Map.of(mob.getUniqueId(), targetId))));
+        verify(mob).setTarget(null);
+        verify(target, never()).remove();
     }
 
     @Test void unsavedCartSettingsAreRejectedUsingDetachedNativeDefaults() {
@@ -233,5 +301,6 @@ class PaperEntitySnapshotsTest {
         when(entity.isPersistent()).thenReturn(true);
         when(entity.getBoundingBox()).thenReturn(new BoundingBox(0, 64, 0, 0.8, 65, 0.8));
         when(entity.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(entity.getWorld()).thenReturn(world);
     }
 }

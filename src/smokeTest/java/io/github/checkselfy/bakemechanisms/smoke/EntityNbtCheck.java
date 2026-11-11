@@ -8,6 +8,7 @@ import io.github.checkselfy.bakemechanisms.profiling.ProductionProfile;
 import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
 import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
 import io.github.checkselfy.bakemechanisms.stasis.PaperEntitySnapshots;
+import io.github.checkselfy.bakemechanisms.stasis.PaperMobTargets;
 import io.github.checkselfy.bakemechanisms.stasis.StasisService;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -91,14 +92,22 @@ public final class EntityNbtCheck {
         var farm = registry.register(creator, region, new PaperOutputResolver().resolve(output));
         registry.markReady(farm.id(), new ProductionProfile(Map.of(Material.SUGAR_CANE, 1.0), 3600));
         var entities = fixtures();
+        world.getChunkAt(16, 5).load();
+        var external = (Cow) world.spawnEntity(new Location(world, 260, 299, 95), EntityType.COW);
+        external.setAI(false); external.setPersistent(true); external.setGravity(false);
+        var externalSource = (Mob) entities.get(1);
+        PaperMobTargets.set(externalSource, external);
         var expected = new YamlConfiguration();
         expected.set("farm", farm.id().toString());
         expected.set("creator", creator.toString());
+        expected.set("external-target", external.getUniqueId().toString());
+        expected.set("external-source", externalSource.getUniqueId().toString());
         for (var entity : entities) expected.set("entities." + entity.getUniqueId(), state(entity));
         Files.createDirectories(baseline.getParent());
         expected.save(baseline.toFile());
         var service = service(registry);
         service.enter(farm.id(), creator);
+        require(external.isValid(), "Stasis removed external target outside the mechanism");
         require(nearby().isEmpty(), "Removal left entities or dropped inventory copies");
         require(world.getBlockAt(160, 296, 0).getType() == Material.BEDROCK, "No filler after enter");
         plugin.getLogger().info("ENTITY_NBT_CAPTURE_PASSED: " + entities.size() + " entities; durable snapshot before shutdown");
@@ -112,6 +121,10 @@ public final class EntityNbtCheck {
         service.recover();
         var farmId = UUID.fromString(expected.getString("farm"));
         var creator = UUID.fromString(expected.getString("creator"));
+        world.getChunkAt(16, 5).load();
+        var externalId = UUID.fromString(expected.getString("external-target"));
+        var external = plugin.getServer().getEntity(externalId);
+        require(external != null && external.isValid(), "External target did not survive clean restart");
         var entries = expected.getConfigurationSection("entities");
         require(entries != null, "Missing independent expected entity state");
         var ids = entries.getKeys(false).stream().map(UUID::fromString).collect(Collectors.toSet());
@@ -145,6 +158,16 @@ public final class EntityNbtCheck {
         assertEntities(expected, ids);
         require(store.loadActive().isEmpty(), "Successful restore left active snapshot");
         rejectionChecks(registry, service, farmId, creator);
+        // External references are not part of the snapshot: an obsolete target must not block restoration.
+        registry.markReady(farmId, new ProductionProfile(Map.of(Material.SUGAR_CANE, 1.0), 3600));
+        service.enter(farmId, creator);
+        external.remove();
+        service.restore(farmId, creator);
+        var sourceId = UUID.fromString(expected.getString("external-source"));
+        require(((Mob) plugin.getServer().getEntity(sourceId)).getTarget() == null, "Missing external target was recreated or retained");
+        expected.set("entities." + sourceId + ".target-uuid", "null");
+        assertEntities(expected, ids);
+        plugin.getLogger().info("MOB_TARGET_EXTERNAL_PASSED");
         plugin.getLogger().info("ENTITY_NBT_RESTART_PASSED: " + PaperEntitySnapshots.supportedTypes().size()
                 + " entity types, " + ids.size() + " entities, repeated cycle, rejection checks");
     }
@@ -300,6 +323,21 @@ public final class EntityNbtCheck {
         adultSheep.getPersistentDataContainer().set(key, PersistentDataType.STRING, "adult-sheep");
         adultSheep.getPersistentDataContainer().set(new NamespacedKey(plugin, "nbt_bytes"), PersistentDataType.BYTE_ARRAY, new byte[] { 42 });
         result.add(adultSheep);
+        adultSheep.setInvulnerable(false);
+        var alternateTarget = (LivingEntity) result.get(2);
+        alternateTarget.setInvulnerable(false);
+        int activeTargets = 0;
+        for (var entity : result) if (entity instanceof Mob mob) {
+            if (mob instanceof Dolphin dolphin) dolphin.setAdult(); // Calves cannot attack in vanilla.
+            var target = mob instanceof Breeze ? (LivingEntity) result.get(3)
+                    : mob == adultSheep ? alternateTarget : adultSheep;
+            target.setInvulnerable(false);
+            PaperMobTargets.set(mob, target);
+            require(mob.getTarget() != null && mob.getTarget().getUniqueId().equals(target.getUniqueId()),
+                    "Could not initialize target for " + entity.getType());
+            activeTargets++;
+        }
+        plugin.getLogger().info("MOB_TARGET_MATRIX: " + activeTargets + " active targets before capture");
         return result;
     }
 
@@ -351,7 +389,10 @@ public final class EntityNbtCheck {
                     + ":" + effect.getAmplifier() + ":" + effect.getDuration() + ":" + effect.isAmbient()
                     + ":" + effect.hasParticles() + ":" + effect.hasIcon()).sorted().toList());
             put(values, "despawn", living.getRemoveWhenFarAway());
-            if (living instanceof Mob mob) put(values, "aware", mob.isAware());
+            if (living instanceof Mob mob) {
+                put(values, "aware", mob.isAware());
+                put(values, "target-uuid", mob.getTarget() == null ? null : mob.getTarget().getUniqueId());
+            }
             if (living instanceof Zombie || living instanceof ArmorStand) for (var slot : EQUIPMENT) {
                 put(values, "item-equipment-" + slot, item(living.getEquipment().getItem(slot)));
                 if (living instanceof Zombie) put(values, "drop-" + slot, living.getEquipment().getDropChance(slot));
@@ -453,14 +494,6 @@ public final class EntityNbtCheck {
         cow.setPose(Pose.SITTING, true);
         expectRefused(service, farmId, creator, cow);
         cow.remove();
-        var zombie = (Zombie) world.spawnEntity(new Location(world, 161, 299, 1), EntityType.ZOMBIE);
-        var target = (LivingEntity) nearby().stream().filter(e -> e instanceof Cow).findFirst().orElseThrow();
-        target.setInvulnerable(false);
-        zombie.setTarget(target);
-        require(zombie.getTarget() != null, "Could not initialize active mob target probe");
-        expectRefused(service, farmId, creator, zombie);
-        zombie.remove();
-        target.setInvulnerable(true);
         var bee = (Bee) world.spawnEntity(new Location(world, 161, 299, 1), EntityType.BEE);
         bee.setTimeSinceSting(113);
         expectRefused(service, farmId, creator, bee);

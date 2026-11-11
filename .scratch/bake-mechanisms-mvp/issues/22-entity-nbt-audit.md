@@ -1,6 +1,6 @@
 # Проверить полноту сохранения и восстановления NBT сущностей
 
-Status: implemented (175 unit tests and real Paper restart checks passed for 95 types)
+Status: implemented (181 unit tests; real Paper restart/target and farm behavior checks passed)
 GitHub: https://github.com/CheckSelfy/Bake-Mechanisms/issues/22
 Branch: feature/22-entity-nbt-audit
 
@@ -25,6 +25,12 @@ Branch: feature/22-entity-nbt-audit
 - По запросу пользователя расширена поддержка: 91 живой тип закреплённого Paper API (кроме дракона Края)
   и четыре прежних неживых; все типы проверяются на реальном сервере. Отдельно проверяются взрослая
   нестриженая овца и молодая стриженая, разных цветов. Не добавляются произвольные новые типы будущих API.
+- Проверенный аудит и расширение живых типов закоммичены отдельно: `1d121a7`.
+- Следующий запрос пользователя: разрешить активные цели всех мобов для железных, криперных и слаймовых ферм.
+  Добавлен формат конверта 3 с UUID-ссылками целей и чтением версий 1/2; двухпроходное восстановление;
+  pinned публичный native Brain-адаптер без private reflection. На двух процессах проверяются 90 активных
+  целей, внешняя цель и её исчезновение. На тикающем сервере проверяются кошка/крипер, слайм/голем,
+  а также реальное появление железного голема при панике трёх недавно спавших жителей рядом с зомби.
 - Проверено: `gradlew.bat build entityNbtSmoke stasisSmoke --console=plain` — `BUILD SUCCESSFUL`;
   Paper 26.3 build 246: `ENTITY_NBT_CAPTURE_PASSED`, `ENTITY_NBT_RESTART_PASSED` и все пять
   обычных smoke-маркеров стазиса. Ручной клиент для этого аудита не требуется.

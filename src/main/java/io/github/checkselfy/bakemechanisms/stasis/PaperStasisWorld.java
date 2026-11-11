@@ -173,6 +173,7 @@ public final class PaperStasisWorld implements StasisWorld {
                         .setType(Material.STRUCTURE_VOID, false);
             }
             entities.spawn(restoredEntities);
+            entities.restoreTargets(restoredEntities, payload.groups());
         } catch (IOException error) {
             throw new IllegalStateException("Не удалось прочитать снимок.", error);
         }
