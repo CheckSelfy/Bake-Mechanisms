@@ -71,7 +71,7 @@ class MarkingControllerTest {
         var corner = block(0, 0);
         var event = click(Action.LEFT_CLICK_BLOCK, corner);
         click(Action.RIGHT_CLICK_BLOCK, corner);
-        selectOutput(32);
+        selectOutput(1);
         run("register");
         var farm = registry.findByCreator(creator).getFirst();
         assertEquals(FarmRegistry.State.NEEDS_PROFILING, farm.state());
@@ -91,7 +91,7 @@ class MarkingControllerTest {
         when(event.getHand()).thenReturn(EquipmentSlot.OFF_HAND);
         controller.onInteract(event);
         click(Action.RIGHT_CLICK_BLOCK, block(0, 0));
-        selectOutput(32);
+        selectOutput(1);
         run("register");
         assertTrue(registry.findByCreator(creator).isEmpty());
     }
@@ -101,7 +101,7 @@ class MarkingControllerTest {
         when(wand.hasItemMeta()).thenReturn(false);
         var event = click(Action.LEFT_CLICK_BLOCK, block(0, 0));
         verify(event, never()).setUseInteractedBlock(any());
-        selectOutput(32);
+        selectOutput(1);
         run("register");
         assertTrue(registry.findByCreator(creator).isEmpty());
     }
@@ -109,13 +109,13 @@ class MarkingControllerTest {
     @Test
     void changedOrBrokenOutputIsRejectedAtRegistration() {
         selectCorners();
-        var anchor = selectOutput(32);
+        var anchor = selectOutput(1);
         when(outputs.resolve(anchor)).thenThrow(new IllegalArgumentException("Контейнер сломан."));
         run("register");
         assertTrue(registry.findByCreator(creator).isEmpty());
         verify(player).sendMessage("Контейнер сломан.");
         doReturn(new OutputContainer(OutputContainer.Type.DOUBLE_CHEST,
-                Set.of(new BlockPosition(worldId, 32, 0, 0), new BlockPosition(worldId, 33, 0, 0))))
+                Set.of(new BlockPosition(worldId, 1, 0, 0), new BlockPosition(worldId, 1, 0, 1))))
                 .when(outputs).resolve(anchor);
         run("register");
         assertTrue(registry.findByCreator(creator).isEmpty());
@@ -125,14 +125,14 @@ class MarkingControllerTest {
     @Test
     void quitAndWorldChangeClearUnfinishedSelection() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         var quit = mock(PlayerQuitEvent.class);
         when(quit.getPlayer()).thenReturn(player);
         controller.onQuit(quit);
         run("register");
         assertTrue(registry.findByCreator(creator).isEmpty());
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         var change = mock(PlayerChangedWorldEvent.class);
         when(change.getPlayer()).thenReturn(player);
         controller.onWorldChange(change);
@@ -145,7 +145,7 @@ class MarkingControllerTest {
         run("register");
         click(Action.LEFT_CLICK_BLOCK, block(0, 320));
         click(Action.RIGHT_CLICK_BLOCK, block(0, 320));
-        selectOutput(32);
+        selectOutput(1);
         run("register");
         assertTrue(registry.findByCreator(creator).isEmpty());
         verify(player).sendMessage(contains("допустимую высоту"));
@@ -154,7 +154,7 @@ class MarkingControllerTest {
     @Test
     void otherPlayerCannotInspectOrCompleteFarmId() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register");
         var farm = registry.findByCreator(creator).getFirst();
         var other = mock(Player.class);
@@ -169,7 +169,7 @@ class MarkingControllerTest {
     @Test
     void unselectDiscardsSelectionAndInvalidUuidHasReadableError() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("unselect");
         run("register");
         run("info", "--id", "invalid");
@@ -179,7 +179,7 @@ class MarkingControllerTest {
 
     @Test
     void sneakingRightClickChoosesOutputWithoutReplacingSecondCorner() {
-        var anchor = selectOutput(32);
+        var anchor = selectOutput(1);
         run("unselect");
         selectCorners();
         when(player.isSneaking()).thenReturn(true);
@@ -204,7 +204,7 @@ class MarkingControllerTest {
     @Test
     void selectionIsNotSharedWithOtherPlayers() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         var other = mock(Player.class);
         var otherId = UUID.randomUUID();
         when(other.getUniqueId()).thenReturn(otherId);
@@ -258,7 +258,7 @@ class MarkingControllerTest {
     @Test
     void sprintIsRefusedAndHiddenWithoutTheRightToUseTick() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register", "Iron");
         when(player.hasPermission("minecraft.command.tick")).thenReturn(false);
 
@@ -276,7 +276,7 @@ class MarkingControllerTest {
     @Test
     void sprintRunsTickSprintForTheRemainingTicksAsThePlayer() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register", "Iron");
         var farm = registry.findByCreator(creator).getFirst();
         when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
@@ -295,7 +295,7 @@ class MarkingControllerTest {
     @Test
     void sprintReportsAFailureWhenTheServerDoesNotRunTick() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register", "Iron");
         var farm = registry.findByCreator(creator).getFirst();
         when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
@@ -309,9 +309,21 @@ class MarkingControllerTest {
     }
 
     @Test
+    void profileCommandsChooseShortOrLongRunAndOfferFarmCompletion() {
+        selectCorners(); selectOutput(1); run("register", "Cane");
+        var farm = registry.findByCreator(creator).getFirst();
+        run("profile", "Cane");
+        verify(profiling).start(farm.id(),creator);
+        run("PROFILE-LONG", "--id", farm.id().toString());
+        verify(profiling).start(farm.id(),creator,36000);
+        assertTrue(controller.onTabComplete(player,command,"bake",new String[]{"profile"}).contains("profile-long"));
+        assertEquals(java.util.List.of("Cane","--id"),controller.onTabComplete(player,command,"bake",new String[]{"profile-long",""}));
+    }
+
+    @Test
     void renamedCommandsPointToTheirNewNamesWithoutActing() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register", "Iron");
         var renames = java.util.Map.of("output", "select-output", "clear", "unselect",
                 "cancel", "cancel-profiling", "restore", "unstasis", "delete", "unregister");
@@ -333,7 +345,7 @@ class MarkingControllerTest {
         assertEquals(java.util.List.of("unselect", "unregister"),
                 controller.onTabComplete(player, command, "bake", new String[] { "un" }));
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register", "Iron");
         assertEquals(java.util.List.of("Iron", "--id"),
                 controller.onTabComplete(player, command, "bake", new String[] { "cancel-profiling", "" }));
@@ -344,7 +356,7 @@ class MarkingControllerTest {
     @Test
     void cancelProfilingCancelsTheNamedFarm() {
         selectCorners();
-        selectOutput(32);
+        selectOutput(1);
         run("register", "Iron");
         var farm = registry.findByCreator(creator).getFirst();
         run("cancel-profiling", "Iron");

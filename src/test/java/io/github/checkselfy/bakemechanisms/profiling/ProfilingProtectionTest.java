@@ -57,9 +57,9 @@ class ProfilingProtectionTest {
         when(world.getUID()).thenReturn(worldId);
         when(player.getWidth()).thenReturn(0.6);
         when(player.getHeight()).thenReturn(1.8);
-        // Mechanism occupies x/y/z 0..9, output barrel at (20, 0, 0).
+        // Mechanism occupies x/y/z 0..9, output barrel at (10, 0, 0).
         farm = registry.register(creator, new Cuboid(position(0, 0, 0), position(9, 9, 9)),
-                new OutputContainer(OutputContainer.Type.BARREL, Set.of(position(20, 0, 0))));
+                new OutputContainer(OutputContainer.Type.BARREL, Set.of(position(10, 0, 0))));
         fake.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
     }
@@ -71,7 +71,7 @@ class ProfilingProtectionTest {
         var breakInside = new BlockBreakEvent(inside, player);
         protection.onBreak(breakInside);
         assertTrue(breakInside.isCancelled());
-        var breakOutput = new BlockBreakEvent(block(20, 0, 0), player);
+        var breakOutput = new BlockBreakEvent(block(10, 0, 0), player);
         protection.onBreak(breakOutput);
         assertTrue(breakOutput.isCancelled());
         var breakOutside = new BlockBreakEvent(outside, player);
@@ -97,15 +97,15 @@ class ProfilingProtectionTest {
 
     @Test
     void playersCannotWalkOrTeleportIntoMechanism() {
-        var walkIn = move(new Location(world, -1, 0, 5), new Location(world, -0.2, 0, 5));
+        var walkIn = move(new Location(world, -3.5, 0, 5), new Location(world, -2.2, 0, 5));
         protection.onMove(walkIn);
         verify(walkIn).setCancelled(true);
 
-        var alongside = move(new Location(world, -1, 0, 5), new Location(world, -0.4, 0, 5));
+        var alongside = move(new Location(world, -3.5, 0, 5), new Location(world, -2.4, 0, 5));
         protection.onMove(alongside);
         verify(alongside, never()).setCancelled(true);
 
-        var onTop = move(new Location(world, 5, 10, 5), new Location(world, 6, 10, 5));
+        var onTop = move(new Location(world, 5, 12, 5), new Location(world, 6, 12, 5));
         protection.onMove(onTop);
         verify(onTop, never()).setCancelled(true);
 
@@ -119,7 +119,7 @@ class ProfilingProtectionTest {
 
     @Test
     void outputInventoryCannotBeOpenedOrExploded() {
-        var outputBlock = block(20, 0, 0);
+        var outputBlock = block(10, 0, 0);
         var barrel = mock(Barrel.class);
         when(barrel.getBlock()).thenReturn(outputBlock);
         var open = mock(InventoryOpenEvent.class);
@@ -148,6 +148,11 @@ class ProfilingProtectionTest {
 
         var blocks = new ArrayList<>(List.of(outputBlock, block(5, 5, 5), block(30, 0, 0)));
         var explosion = mock(EntityExplodeEvent.class);
+        var source = mock(Entity.class);
+        var sourceId = UUID.randomUUID();
+        when(source.getUniqueId()).thenReturn(sourceId);
+        service.isolations().getFirst().actor(sourceId);
+        when(explosion.getEntity()).thenReturn(source);
         when(explosion.blockList()).thenReturn(blocks);
         protection.onEntityExplode(explosion);
         assertEquals(2, blocks.size());
@@ -200,13 +205,13 @@ class ProfilingProtectionTest {
     @Test
     void blocksCannotBePlacedAgainstOutputAndMinecartsInsideCannotBeBroken() {
         var hopperBelow = mock(BlockPlaceEvent.class);
-        var below = block(20, -1, 0);
+        var below = block(10, -1, 0);
         when(hopperBelow.getBlockPlaced()).thenReturn(below);
         protection.onPlace(hopperBelow);
         verify(hopperBelow).setCancelled(true);
 
         var diagonal = mock(BlockPlaceEvent.class);
-        var far = block(21, -1, 0);
+        var far = block(13, -1, 0);
         when(diagonal.getBlockPlaced()).thenReturn(far);
         protection.onPlace(diagonal);
         verify(diagonal, never()).setCancelled(true);

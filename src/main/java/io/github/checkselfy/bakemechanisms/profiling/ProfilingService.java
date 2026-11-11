@@ -20,6 +20,7 @@ import java.util.function.Predicate;
 public final class ProfilingService {
     public interface ProgressListener {
         default void started(MarkedFarm farm) { }
+        default void started(MarkedFarm farm, int durationTicks) { started(farm); }
 
         default void progressed(MarkedFarm farm, long elapsedTicks) { }
 
@@ -38,12 +39,16 @@ public final class ProfilingService {
         final MarkedFarm farm;
         final Set<ChunkPosition> chunks;
         final ProfileCalculator calculator;
+        final ProfilingIsolation isolation;
+        final int durationTicks;
         long elapsed;
 
-        Session(MarkedFarm farm, Set<ChunkPosition> chunks, ProfileCalculator calculator) {
+        Session(MarkedFarm farm, Set<ChunkPosition> chunks, ProfileCalculator calculator, int durationTicks) {
             this.farm = farm;
             this.chunks = chunks;
             this.calculator = calculator;
+            this.isolation = new ProfilingIsolation(farm);
+            this.durationTicks = durationTicks;
         }
     }
 
@@ -77,6 +82,12 @@ public final class ProfilingService {
     }
 
     public void start(UUID farmId, UUID actorId) {
+        start(farmId, actorId, ProfilingSettings.DURATION_TICKS);
+    }
+
+    public void start(UUID farmId, UUID actorId, int durationTicks) {
+        if (durationTicks != ProfilingSettings.DURATION_TICKS && durationTicks != ProfilingSettings.LONG_DURATION_TICKS)
+            throw new IllegalArgumentException("Длительность замера должна быть 3600 или 36000 тиков.");
         var farm = registry.requireCreator(farmId, actorId);
         if (sessions.containsKey(farm.id())) throw new IllegalArgumentException("Ферма уже профилируется.");
         if (farm.state() != State.NEEDS_PROFILING) {
@@ -87,14 +98,26 @@ public final class ProfilingService {
             throw new IllegalArgumentException("Остаток буфера выработки ещё переносится в выходной контейнер."
                     + " Освободите в нём место и повторите профилирование.");
         }
-        if (world.hasPlayerInside(farm.mechanism())) {
-            throw new IllegalArgumentException("Внутри механизма находится игрок. Выйдите из кубоида и повторите.");
+        ProfilingIsolation.requireAdjacentOutputs(farm.mechanism(), farm.outputs());
+        var area = farm.mechanism().expanded(ProfilingIsolation.MARGIN);
+        if (sessions.values().stream().anyMatch(session -> session.isolation.area().overlaps(area))) {
+            throw new IllegalArgumentException("Защитная область пересекает другую профилируемую ферму.");
+        }
+        if (registry.all().stream().anyMatch(other -> !other.id().equals(farm.id())
+                && (area.overlaps(other.mechanism()) || other.outputBlocks().anyMatch(area::contains)))) {
+            throw new IllegalArgumentException("Защитная область захватывает механизм или выход другой фермы. Разнесите фермы.");
+        }
+        if (world.hasPlayerInside(area)) {
+            throw new IllegalArgumentException("Внутри защитной области находится игрок. Отойдите на два блока от механизма и повторите.");
         }
         var chunks = chunksOf(farm);
         tickets.acquireAll(chunks);
         List<OutputSnapshot> baseline;
+        ProfilingIsolation.Sources sources;
         try {
+            sources = world.validateIsolation(farm);
             baseline = readOutputs(farm);
+            farm.outputs().forEach(world::lockOutput);
         } catch (IllegalStateException error) {
             chunks.forEach(tickets::release);
             throw new IllegalArgumentException(error.getMessage(), error);
@@ -102,11 +125,11 @@ public final class ProfilingService {
             chunks.forEach(tickets::release);
             throw error;
         }
-        farm.outputs().forEach(world::lockOutput);
         registry.markProfiling(farm.id());
-        var session = new Session(farm, chunks, new ProfileCalculator(baseline, settings));
+        var session = new Session(farm, chunks, new ProfileCalculator(baseline, settings), durationTicks);
+        session.isolation.initialize(sources);
         sessions.put(farm.id(), session);
-        progressListener.started(farm);
+        progressListener.started(farm, durationTicks);
         if (session.calculator.saturated()) reportFull(session);
     }
 
@@ -119,12 +142,19 @@ public final class ProfilingService {
         var farm = registry.requireCreator(farmId, actorId);
         var session = sessions.get(farm.id());
         if (session == null) throw new IllegalArgumentException("Ферма сейчас не профилируется.");
-        return ProfilingSettings.DURATION_TICKS - session.elapsed;
+        return session.durationTicks - session.elapsed;
     }
 
     /** Farms whose mechanism and output are currently protected. */
     public List<MarkedFarm> activeFarms() {
         return sessions.values().stream().map(session -> session.farm).toList();
+    }
+
+    public List<ProfilingIsolation> isolations() { return sessions.values().stream().map(session -> session.isolation).toList(); }
+
+    public void reject(UUID farmId, String reason) {
+        var session = sessions.get(farmId);
+        if (session != null) abort(session, reason);
     }
 
     /** Removes protection and tickets; the original mechanism is never touched. */
@@ -139,7 +169,7 @@ public final class ProfilingService {
     public void tick() {
         for (var session : new ArrayList<>(sessions.values())) {
             session.elapsed++;
-            boolean last = session.elapsed >= ProfilingSettings.DURATION_TICKS;
+            boolean last = session.elapsed >= session.durationTicks;
             boolean due = last || session.elapsed % settings.snapshotInterval() == 0;
             if (due && !session.calculator.saturated()) {
                 try {
@@ -208,8 +238,9 @@ public final class ProfilingService {
 
     private static Set<ChunkPosition> chunksOf(MarkedFarm farm) {
         var chunks = new LinkedHashSet<ChunkPosition>();
-        var min = farm.mechanism().min();
-        var max = farm.mechanism().max();
+        var area = farm.mechanism().expanded(ProfilingIsolation.MARGIN);
+        var min = area.min();
+        var max = area.max();
         for (int x = min.x() >> 4; x <= max.x() >> 4; x++) {
             for (int z = min.z() >> 4; z <= max.z() >> 4; z++) {
                 chunks.add(new ChunkPosition(min.worldId(), x, z));

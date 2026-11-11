@@ -14,6 +14,7 @@ import io.github.checkselfy.bakemechanisms.marking.ReadyMechanismWatcher;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
 import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingTransportProtection;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProgressDisplay;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
@@ -140,6 +141,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(marking, this);
         getServer().getPluginManager().registerEvents(progressDisplay, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
+        getServer().getPluginManager().registerEvents(new ProfilingTransportProtection(profiling), this);
         getServer().getPluginManager().registerEvents(new ReadyMechanismWatcher(registry, getServer()), this);
         getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
         getServer().getScheduler().runTaskTimer(this, () -> {

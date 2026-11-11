@@ -6,6 +6,10 @@ import java.util.UUID;
 
 /** Everything profiling needs from the server. Called on the server thread only. */
 public interface ProfilingWorld extends ChunkTickets.Backend {
+    /** Validates initial sources and closes inventories throughout the protection belt. */
+    default ProfilingIsolation.Sources validateIsolation(io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm farm) {
+        return ProfilingIsolation.Sources.empty();
+    }
     /** @throws IllegalStateException when the output is no longer the registered container */
     OutputSnapshot readOutput(OutputContainer output);
 

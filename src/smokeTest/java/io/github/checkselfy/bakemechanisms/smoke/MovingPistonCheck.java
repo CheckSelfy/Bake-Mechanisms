@@ -79,7 +79,7 @@ final class MovingPistonCheck {
         var adapter = new PaperStasisWorld(plugin, resolver);
         var store = new FileSnapshotStore(plugin.getDataFolder().toPath().resolve(UUID.randomUUID().toString()), "26.3");
         var service = new StasisService(registry, adapter, store);
-        var output = world.getBlockAt(384, 300, 0);
+        var output = world.getBlockAt(357, 300, 0);
         output.setType(Material.BARREL, false);
         UUID creator = UUID.randomUUID();
         var farm = registry.register(creator, region, resolver.resolve(output));

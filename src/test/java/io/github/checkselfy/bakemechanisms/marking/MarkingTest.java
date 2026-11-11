@@ -46,7 +46,7 @@ public final class MarkingTest {
         reject("одном мире", () -> registry.register(creator, secondBox,
                 output(new BlockPosition(UUID.randomUUID(), 200, 0, 0))));
         check(registry.findByCreator(creator).size() == 1, "rejections do not mutate registry");
-        registry.register(UUID.randomUUID(), secondBox, output(block(100, 0, 0)));
+        registry.register(UUID.randomUUID(), secondBox, output(block(97, 0, 0)));
         check(registry.findByCreator(creator).size() == 1, "multiple creators");
 
         check(!new Cuboid(block(-1, 0, 0), block(-1, 0, 0)).sharesMechanismChunks(
@@ -60,7 +60,7 @@ public final class MarkingTest {
         var left = block(31, 0, 0);
         var right = block(32, 0, 0);
         var doubleOutput = new OutputContainer(OutputContainer.Type.DOUBLE_CHEST, Set.of(left, right));
-        doubles.register(creator, new Cuboid(block(0, 0, 0), block(0, 0, 0)), doubleOutput);
+        doubles.register(creator, new Cuboid(block(31, 0, 1), block(32, 0, 1)), doubleOutput);
         reject("уже назначен", () -> doubles.register(creator,
                 new Cuboid(block(64, 0, 0), block(64, 0, 0)), output(right)));
         reject("вне механизма", () -> new FarmRegistry(100).register(creator,
@@ -69,7 +69,7 @@ public final class MarkingTest {
         reject("соседними", () -> new OutputContainer(OutputContainer.Type.DOUBLE_CHEST,
                 Set.of(left, block(33, 0, 0))));
         var barrelRegistry = new FarmRegistry(100);
-        barrelRegistry.register(creator, new Cuboid(block(0, 0, 0), block(0, 0, 0)),
+        barrelRegistry.register(creator, new Cuboid(block(30, 0, 0), block(30, 0, 0)),
                 new OutputContainer(OutputContainer.Type.BARREL, Set.of(left)));
         check(barrelRegistry.findByCreator(creator).size() == 1, "barrel accepted");
         reject("положительным", () -> new FarmRegistry(0));

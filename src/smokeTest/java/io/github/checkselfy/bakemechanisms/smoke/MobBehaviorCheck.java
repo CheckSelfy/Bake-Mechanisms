@@ -84,7 +84,7 @@ final class MobBehaviorCheck extends BukkitRunnable {
         }
         var registry = new FarmRegistry(FarmRegistry.DEFAULT_MAX_VOLUME);
         var resolver = new PaperOutputResolver();
-        var output = world.getBlockAt(x + 40, 300, 0);
+        var output = world.getBlockAt(x + 32, 300, 0);
         output.setType(Material.BARREL, false);
         var region = new Cuboid(new BlockPosition(world.getUID(), x, 300, 0), new BlockPosition(world.getUID(), x + 31, 305, 31));
         farm = registry.register(creator, region, resolver.resolve(output)).id();

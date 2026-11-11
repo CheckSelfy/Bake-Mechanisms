@@ -98,7 +98,7 @@ final class ExtendedBlocksCheck {
         flying.customName(Component.text("Flying bee"));
         UUID beeId = flying.getUniqueId();
         var region = new Cuboid(new BlockPosition(world.getUID(), 192, 300, 0), new BlockPosition(world.getUID(), 223, 303, 31));
-        var output = world.getBlockAt(240, 300, 0);
+        var output = world.getBlockAt(224, 300, 0);
         output.setType(Material.BARREL, false);
         UUID creator = UUID.randomUUID();
         var farm = registry.register(creator, region, resolver.resolve(output));
@@ -278,7 +278,7 @@ final class ExtendedBlocksCheck {
     private static void checkPureVoid(JavaPlugin plugin, World world, PaperOutputResolver resolver, PaperStasisWorld adapter) throws Exception {
         var block = world.getBlockAt(288, 300, 0);
         block.setType(Material.STRUCTURE_VOID, false);
-        var output = world.getBlockAt(304, 300, 0);
+        var output = world.getBlockAt(289, 300, 0);
         output.setType(Material.BARREL, false);
         var registry = new FarmRegistry(1);
         var store = new FileSnapshotStore(plugin.getDataFolder().toPath().resolve(UUID.randomUUID().toString()), "26.3");

@@ -71,7 +71,7 @@ class FarmRemovalTest {
     void removalNeedsAnEarlierRequestByTheSamePlayerForTheSameFarm() {
         setUp();
         var farm = ready();
-        var other = registry.register(creator, mechanism(100), output(140));
+        var other = registry.register(creator, mechanism(100), output(105));
 
         assertThrows(IllegalArgumentException.class, () -> removal.confirm(farm.id(), creator));
         removal.request(other.id(), creator);
@@ -138,7 +138,7 @@ class FarmRemovalTest {
     @Test
     void profilingMustBeCancelledFirst() {
         setUp();
-        var farm = registry.register(creator, mechanism(0), output(40));
+        var farm = registry.register(creator, mechanism(0), output(5));
         registry.markProfiling(farm.id());
 
         assertThrows(IllegalArgumentException.class, () -> removal.request(farm.id(), creator));
@@ -148,7 +148,7 @@ class FarmRemovalTest {
     @Test
     void removalReleasesTheOutputChunkOfALeftoverBuffer() {
         setUp();
-        var farm = registry.register(creator, mechanism(0), output(40));
+        var farm = registry.register(creator, mechanism(0), output(5));
         emulation.drain(farm, List.of(Map.of(Material.KELP, 3)));
         assertFalse(loaded.isEmpty());
 
@@ -165,7 +165,7 @@ class FarmRemovalTest {
         registry = new FarmRegistry(FarmRegistry.DEFAULT_MAX_VOLUME, storage::save);
         removal = new FarmRemoval(registry, id -> { throw new java.io.UncheckedIOException(
                 new java.io.IOException("locked")); }, emulation::stopDraining, now::get);
-        var farm = registry.register(creator, mechanism(0), output(40));
+        var farm = registry.register(creator, mechanism(0), output(5));
         emulation.drain(farm, List.of(Map.of(Material.KELP, 3)));
 
         removal.request(farm.id(), creator);
@@ -176,7 +176,7 @@ class FarmRemovalTest {
     }
 
     private MarkedFarm ready() {
-        var farm = registry.register(creator, mechanism(0), output(40));
+        var farm = registry.register(creator, mechanism(0), output(5));
         return registry.markReady(farm.id(), new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
     }
 
@@ -184,7 +184,9 @@ class FarmRemovalTest {
         return new Cuboid(new BlockPosition(WORLD, x, 60, 0), new BlockPosition(WORLD, x + 4, 64, 4));
     }
 
-    private static OutputContainer output(int x) {
-        return new OutputContainer(OutputContainer.Type.CHEST, Set.of(new BlockPosition(WORLD, x, 60, 0)));
+    private static OutputContainer output(int x) { return output(x, 0); }
+
+    private static OutputContainer output(int x, int z) {
+        return new OutputContainer(OutputContainer.Type.CHEST, Set.of(new BlockPosition(WORLD, x, 60, z)));
     }
 }

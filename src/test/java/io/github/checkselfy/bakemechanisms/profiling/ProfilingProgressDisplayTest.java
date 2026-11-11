@@ -32,6 +32,17 @@ class ProfilingProgressDisplayTest {
     }
 
     @Test
+    void selectedDurationControlsPercentageAndRemainingTime() {
+        var longer = new ProfilingProgressDisplay(server);
+        var farm = farm(0);
+        longer.started(farm,36000);
+        var bar = shownBar();
+        assertBar(bar,farm,0,0.0f,"0 с","30 мин 0 с");
+        longer.progressed(farm,18000);
+        assertBar(bar,farm,50,0.5f,"15 мин 0 с","15 мин 0 с");
+    }
+
+    @Test
     void showsFarmPercentageElapsedAndRemainingTimeAndUpdatesOncePerSecond() {
         var farm = farm(0);
         display.started(farm);
@@ -52,14 +63,14 @@ class ProfilingProgressDisplayTest {
         var first = farm(0);
         var second = farm(32);
         display.started(first);
-        display.started(second);
+        display.started(second,36000);
         var captor = ArgumentCaptor.forClass(BossBar.class);
         verify(player, times(2)).showBossBar(captor.capture());
         var firstBar = captor.getAllValues().get(0);
         var secondBar = captor.getAllValues().get(1);
 
         display.progressed(first, 1800);
-        display.progressed(second, 900);
+        display.progressed(second, 9000);
         assertTrue(text(firstBar).contains(first.id().toString()));
         assertTrue(text(secondBar).contains(second.id().toString()));
         assertEquals(0.5f, firstBar.progress());
@@ -107,7 +118,7 @@ class ProfilingProgressDisplayTest {
         var world = UUID.randomUUID();
         var mechanism = new Cuboid(new BlockPosition(world, x, 0, 0), new BlockPosition(world, x + 5, 5, 5));
         var output = new OutputContainer(OutputContainer.Type.CHEST,
-                Set.of(new BlockPosition(world, x + 20, 0, 0)));
+                Set.of(new BlockPosition(world, x + 6, 0, 0)));
         return registry.register(creator, mechanism, output);
     }
 }

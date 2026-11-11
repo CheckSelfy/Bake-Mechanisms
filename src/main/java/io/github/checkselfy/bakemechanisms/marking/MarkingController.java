@@ -32,8 +32,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
     private static final List<String> COMMANDS = List.of("wand", "select-output", "unselect", "register", "list",
-            "info", "rename", "profile", "sprint", "cancel-profiling", "unregister");
-    private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "sprint",
+            "info", "rename", "profile", "profile-long", "sprint", "cancel-profiling", "unregister");
+    private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "profile-long", "sprint",
             "cancel-profiling", "unregister");
     /**
      * Former names of renamed commands. They are not aliases: each answers with its new name and does nothing, so
@@ -43,7 +43,7 @@ public final class MarkingController implements Listener, TabExecutor {
             "cancel", "cancel-profiling", "restore", "unstasis", "delete", "unregister");
     private static final String FARM_USAGE = FarmArguments.USAGE;
     private static final String HELP = "/bake wand | select-output | unselect | register [имя] | list | info "
-            + FARM_USAGE + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | sprint " + FARM_USAGE
+            + FARM_USAGE + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | profile-long " + FARM_USAGE + " | sprint " + FARM_USAGE
             + " (ускоряет весь сервер) | cancel-profiling " + FARM_USAGE + " | stasis " + FARM_USAGE + " | unstasis "
             + FARM_USAGE + " | unregister " + FARM_USAGE + " [confirm]";
     private static final String CONFIRM = "confirm";
@@ -113,10 +113,11 @@ public final class MarkingController implements Listener, TabExecutor {
                     var renamed = registry.rename(target.farm().id(), actor, target.rest().getFirst());
                     player.sendMessage("Ферма переименована: " + renamed.title() + ".");
                 }
-                case "profile" -> {
-                    var farm = farm(player, args, "/bake profile " + FARM_USAGE).farm();
-                    profiling.start(farm.id(), actor);
-                    player.sendMessage("Профилирование запущено на " + ProfilingSettings.DURATION_TICKS
+                case "profile", "profile-long" -> {
+                    var farm = farm(player, args, "/bake " + args[0] + " " + FARM_USAGE).farm();
+                    if (args[0].equalsIgnoreCase("profile-long")) profiling.start(farm.id(), actor, ProfilingSettings.LONG_DURATION_TICKS);
+                    else profiling.start(farm.id(), actor);
+                    player.sendMessage("Профилирование запущено на " + profiling.remainingTicks(farm.id(), actor)
                             + " тиков. Область и выходные контейнеры защищены до завершения. Ускорить: /bake sprint "
                             + farm.reference());
                     show(player, registry.requireCreator(farm.id(), actor));

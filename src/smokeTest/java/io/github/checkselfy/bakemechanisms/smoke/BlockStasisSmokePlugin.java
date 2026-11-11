@@ -59,8 +59,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                         getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
                         getServer().shutdown();
                     } else MobBehaviorCheck.run(this, behaviorError -> {
-                        if (behaviorError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", behaviorError);
-                        getServer().shutdown();
+                        if (behaviorError != null) {
+                            getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", behaviorError);
+                            getServer().shutdown();
+                        } else ProfilingInputCheck.run(this, profilingError -> {
+                            if (profilingError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", profilingError);
+                            getServer().shutdown();
+                        });
                     });
                 });
             } catch (Throwable error) {
@@ -113,7 +118,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         for (int x = 0; x <= 5; x++) for (int y = 300; y <= 302; y++) for (int z = 0; z <= 5; z++) {
             expectedBlocks.put(point(world, x, y, z), world.getBlockAt(x, y, z).getBlockData().getAsString());
         }
-        var outputBlock = world.getBlockAt(32, 300, 0);
+        var outputBlock = world.getBlockAt(6, 300, 0);
         outputBlock.setType(Material.BARREL, false);
         var outputItem = new ItemStack(Material.DIAMOND, 27);
         ((Container) outputBlock.getState(false)).getInventory().setItem(0, outputItem);
@@ -253,7 +258,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
             if (entity instanceof org.bukkit.inventory.InventoryHolder holder) holder.getInventory().clear();
         }
         nearby.forEach(org.bukkit.entity.Entity::remove);
-        var output = world.getBlockAt(128, 300, 0);
+        var output = world.getBlockAt(112, 300, 0);
         output.setType(Material.BARREL, false);
         UUID creator = UUID.randomUUID();
         var farm = registry.register(creator, region, resolver.resolve(output));

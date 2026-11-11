@@ -5,7 +5,7 @@ max-mechanism-volume: 262144
 max-output-containers: 8
 
 profiling:
-  # Ticks between output snapshots during profiling. Total duration is fixed at 3600 ticks.
+  # Ticks between output snapshots during profiling.
   snapshot-interval: 20
   # Shortest useful segment (before the output fills up), in ticks.
   min-useful-ticks: 600

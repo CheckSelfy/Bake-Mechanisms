@@ -50,7 +50,7 @@ class StasisCommandsTest {
         var world = UUID.randomUUID();
         var point = new BlockPosition(world, 0, 64, 0);
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(OutputContainer.Type.BARREL,
-                Set.of(new BlockPosition(world, 32, 64, 0))));
+                Set.of(new BlockPosition(world, 1, 64, 0))));
         assertEquals(java.util.List.of("--id"), commands.onTabComplete(player(creator), command,
                 "bake", new String[] { "unstasis", "" }), "an unnamed farm is reached through --id");
         assertEquals(java.util.List.of(farm.id().toString()), commands.onTabComplete(player(creator), command,
@@ -121,6 +121,6 @@ class StasisCommandsTest {
         var world = UUID.randomUUID();
         var point = new BlockPosition(world, 0, 64, 0);
         return registry.register(creator, new Cuboid(point, point), new OutputContainer(OutputContainer.Type.BARREL,
-                Set.of(new BlockPosition(world, 32, 64, 0))));
+                Set.of(new BlockPosition(world, 1, 64, 0))));
     }
 }

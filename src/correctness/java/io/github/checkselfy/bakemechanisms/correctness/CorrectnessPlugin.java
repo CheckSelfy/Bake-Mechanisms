@@ -441,7 +441,29 @@ public final class CorrectnessPlugin extends JavaPlugin {
     private FarmStorage.StoredFarm farm(UUID id) { return storage.loadAll().stream().filter(f -> f.farm().id().equals(id)).findFirst().orElseThrow(); }
     private void state(UUID id, State expected) { check(farm(id).farm().state() == expected, "farm " + id + " expected " + expected + " actual=" + farm(id).farm().state()); }
     private static EmulationState empty() { return new EmulationState(Map.of(), Map.of()); }
-    private void command(Player player, String command) { check(player.performCommand("bake " + command), "unknown command"); }
+    private void command(Player player, String command) {
+        // Test-only setup: #25 rejects warmup stock, including the fixture's disconnected snapshot marker.
+        // Reinsert that marker after profiling, solely to exercise snapshot inventory preservation.
+        var parts = command.split(" ");
+        if (player.equals(a) && parts.length == 3 && parts[1].equals("--id")
+                && (parts[0].equals("profile") || parts[0].equals("stasis"))) {
+            var target = farm(UUID.fromString(parts[2])).farm();
+            var world = getServer().getWorld(target.mechanism().min().worldId());
+            if (parts[0].equals("profile") && target.state() == State.NEEDS_PROFILING) {
+                var min = target.mechanism().min(); var max = target.mechanism().max();
+                for (int x=min.x();x<=max.x();x++) for(int y=min.y();y<=max.y();y++) for(int z=min.z();z<=max.z();z++)
+                    if(world.getBlockAt(x,y,z).getState(false) instanceof Container container) container.getInventory().clear();
+                for(var entity:world.getNearbyEntities(new org.bukkit.util.BoundingBox(min.x(),min.y(),min.z(),max.x()+1,max.y()+1,max.z()+1)))
+                    if(entity instanceof org.bukkit.entity.Item) entity.remove();
+            } else if (parts[0].equals("stasis") && target.state() == State.READY
+                    && world.getBlockAt(0,65,0).getState(false) instanceof Container container) {
+                var marker = new ItemStack(Material.STONE,3);
+                marker.editMeta(meta -> meta.displayName(Component.text("snapshot-marker")));
+                container.getInventory().setItem(0,marker);
+            }
+        }
+        check(player.performCommand("bake " + command), "unknown command");
+    }
     private void console(String command) { check(getServer().dispatchCommand(getServer().getConsoleSender(), command), "console command refused " + command); }
     private void next(int step) { this.step = step; elapsed = 0; }
     private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
