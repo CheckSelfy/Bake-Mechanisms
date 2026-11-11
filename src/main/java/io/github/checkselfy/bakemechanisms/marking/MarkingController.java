@@ -70,6 +70,7 @@ public final class MarkingController implements Listener, TabExecutor {
     private final Consumer<Runnable> nextTick;
     /** Opens the farm screens; not inside an inventory click. */
     private final Consumer<Player> openFarms;
+    private final TextPrompt prompt;
     private final Map<UUID, MarkingSelection> selections = new HashMap<>();
     /** The last wand click of each player, to drop the repeated events one physical click can produce. */
     private final Map<UUID, WandClick> lastClicks = new HashMap<>();
@@ -94,14 +95,15 @@ public final class MarkingController implements Listener, TabExecutor {
     private record Notice(Component text, int until) { }
 
     public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
-                             ProfilingService profiling, FarmRemoval removal, Consumer<Player> openFarms) {
+                             ProfilingService profiling, FarmRemoval removal, Consumer<Player> openFarms,
+                             TextPrompt prompt) {
         this(plugin, registry, outputs, profiling, removal, MarkingMenu.renderer(plugin.getServer()),
-                task -> plugin.getServer().getScheduler().runTask(plugin, task), openFarms);
+                task -> plugin.getServer().getScheduler().runTask(plugin, task), openFarms, prompt);
     }
 
     MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
                       ProfilingService profiling, FarmRemoval removal, MarkingMenu.Opener menus,
-                      Consumer<Runnable> nextTick, Consumer<Player> openFarms) {
+                      Consumer<Runnable> nextTick, Consumer<Player> openFarms, TextPrompt prompt) {
         this.plugin = plugin;
         this.registry = registry;
         this.outputs = outputs;
@@ -110,6 +112,7 @@ public final class MarkingController implements Listener, TabExecutor {
         this.menus = menus;
         this.nextTick = nextTick;
         this.openFarms = openFarms;
+        this.prompt = prompt;
         this.wandKey = new NamespacedKey(plugin, "marking_wand");
     }
 
@@ -132,9 +135,7 @@ public final class MarkingController implements Listener, TabExecutor {
                 }
                 case "select-output" -> {
                     requireArguments(args, 1);
-                    Block block = player.getTargetBlockExact(6);
-                    if (block == null) throw new IllegalArgumentException("Посмотрите на выходной контейнер в пределах 6 блоков.");
-                    selectOutput(player, block);
+                    selectLookedAt(player);
                 }
                 case "register" -> {
                     if (args.length > 2) throw new IllegalArgumentException("/bake register [имя]");
@@ -356,6 +357,25 @@ public final class MarkingController implements Listener, TabExecutor {
                     player.sendMessage(GUIDE);
                 }
                 case FARMS -> nextTick.accept(() -> openFarms.accept(player));
+                case SELECT_LOOKED -> {
+                    closeMenu(player);
+                    selectLookedAt(player);
+                }
+                case REGISTER_NAMED -> {
+                    var missing = selection(player).missing();
+                    if (!missing.isEmpty()) {
+                        closeMenu(player);
+                        throw new IllegalArgumentException("Не хватает: " + String.join(", ", missing) + ".");
+                    }
+                    nextTick.accept(() -> prompt.ask(player, "Зарегистрировать ферму",
+                            "Имя: латиница, цифры, _ и -", "", name -> {
+                                try {
+                                    register(player, name.isEmpty() ? null : name);
+                                } catch (IllegalArgumentException error) {
+                                    failed(player, error.getMessage());
+                                }
+                            }));
+                }
             }
         } catch (IllegalArgumentException error) {
             failed(player, error.getMessage());
@@ -424,6 +444,13 @@ public final class MarkingController implements Listener, TabExecutor {
 
     private static String capitalized(String text) {
         return Character.toUpperCase(text.charAt(0)) + text.substring(1);
+    }
+
+    /** Selects the container the player looks at, as {@code /bake select-output} does. */
+    private void selectLookedAt(Player player) {
+        Block block = player.getTargetBlockExact(6);
+        if (block == null) throw new IllegalArgumentException("Посмотрите на выходной контейнер в пределах 6 блоков.");
+        selectOutput(player, block);
     }
 
     /** Adds the container to the selection, or removes it when it is already selected. */

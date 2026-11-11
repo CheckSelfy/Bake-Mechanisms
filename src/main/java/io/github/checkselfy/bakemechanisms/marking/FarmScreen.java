@@ -27,6 +27,7 @@ public final class FarmScreen extends ButtonMenu {
 
     private final Map<Integer, Icon> icons = new LinkedHashMap<>();
     private final Map<Integer, Button> buttons = new LinkedHashMap<>();
+    private final Map<Integer, Button> rightButtons = new LinkedHashMap<>();
 
     Map<Integer, Icon> icons() {
         return Map.copyOf(icons);
@@ -50,9 +51,16 @@ public final class FarmScreen extends ButtonMenu {
         return show(slot, icon);
     }
 
-    /** The button of a slot, or null when the slot has none. */
-    Button button(int slot) {
-        return buttons.get(slot);
+    /** Gives a button a different action for a right click; both leave the screen. */
+    FarmScreen exit(int slot, Icon icon, Runnable left, Runnable right) {
+        rightButtons.put(slot, new Button(right, true));
+        return exit(slot, icon, left);
+    }
+
+    /** The button a click on the slot presses, or null when the slot has none. */
+    Button button(int slot, boolean right) {
+        var button = right ? rightButtons.get(slot) : null;
+        return button != null ? button : buttons.get(slot);
     }
 
     /** Takes over the content of another screen, keeping this one open. */
@@ -61,5 +69,7 @@ public final class FarmScreen extends ButtonMenu {
         icons.putAll(other.icons);
         buttons.clear();
         buttons.putAll(other.buttons);
+        rightButtons.clear();
+        rightButtons.putAll(other.rightButtons);
     }
 }

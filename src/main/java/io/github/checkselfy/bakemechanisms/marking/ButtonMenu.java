@@ -23,8 +23,8 @@ abstract class ButtonMenu implements InventoryHolder {
     private Inventory inventory;
     private boolean closing;
 
-    /** A plain click on a button slot of an open menu. */
-    record Press<M extends ButtonMenu>(Player player, M menu, int slot) { }
+    /** A plain click on a button slot of an open menu; {@code right} for a right click. */
+    record Press<M extends ButtonMenu>(Player player, M menu, int slot, boolean right) { }
 
     @Override
     public Inventory getInventory() {
@@ -58,7 +58,7 @@ abstract class ButtonMenu implements InventoryHolder {
         if (!(event.getWhoClicked() instanceof Player player) || menu.closing()) return null;
         if (event.getClickedInventory() != top) return null;
         if (event.getClick() != ClickType.LEFT && event.getClick() != ClickType.RIGHT) return null;
-        return new Press<>(player, menu, event.getRawSlot());
+        return new Press<>(player, menu, event.getRawSlot(), event.getClick() == ClickType.RIGHT);
     }
 
     /** A button item: gold name, gray lore without the default italics, optionally glinting. */

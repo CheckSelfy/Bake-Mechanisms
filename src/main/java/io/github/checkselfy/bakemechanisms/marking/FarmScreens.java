@@ -18,9 +18,10 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 
 /**
- * The screen of a player's farms. Each farm is a group of four slots: a block showing its state, the operation its
- * state allows (profile, sprint, stasis or unstasis), long profiling and deletion; a slot whose action the state does not
- * allow stays empty, so every action keeps its column. Operations run the {@code /bake}
+ * The screen of a player's farms. Each farm is a group of four slots: a block showing its state (left click: details
+ * in chat; right click: rename in a text field), the operation its state allows (profile, sprint, stasis or
+ * unstasis), long profiling, and deletion or cancelling the profiling; a slot whose action the state does not allow
+ * stays empty, so every action keeps its column. The bottom row gives the wand and lists the farms in chat. Operations run the {@code /bake}
  * subcommands as the player, so their rules, creator checks and messages stay those of the commands. Deletion is
  * confirmed by a second click on the same slot. Server thread only.
  */
@@ -30,6 +31,8 @@ public final class FarmScreens implements Listener {
     private static final int[] GROUP_COLUMNS = { 0, 5 };
     static final int PREVIOUS_SLOT = 45;
     static final int NEXT_SLOT = 53;
+    static final int WAND_SLOT = 48;
+    static final int LIST_SLOT = 50;
     private static final String CONFIRM = "confirm";
 
     /** Runs a {@code /bake} subcommand as the player. */
@@ -61,6 +64,9 @@ public final class FarmScreens implements Listener {
     private static final Operation LONG_PROFILE = new Operation("profile-long", Material.SPYGLASS,
             "Долгое профилирование", "Замер на " + ProfilingSettings.LONG_DURATION_TICKS + " тиков, точнее.");
 
+    private static final Operation CANCEL_PROFILING = new Operation("cancel-profiling", Material.RED_DYE,
+            "Отменить замер", "Механизм не изменится.");
+
     private static final Map<FarmRegistry.State, Material> BLOCKS = Map.of(
             FarmRegistry.State.NEEDS_PROFILING, Material.YELLOW_CONCRETE,
             FarmRegistry.State.PROFILING, Material.OBSERVER,
@@ -70,17 +76,21 @@ public final class FarmScreens implements Listener {
     private final FarmRegistry registry;
     private final Commands commands;
     private final Opener opener;
+    private final TextPrompt prompt;
     /** Runs a task on the next server tick: inventories must not be opened, closed or changed inside a click. */
     private final Consumer<Runnable> nextTick;
 
-    public FarmScreens(FarmRegistry registry, Commands commands, Server server, Consumer<Runnable> nextTick) {
-        this(registry, commands, renderer(server), nextTick);
+    public FarmScreens(FarmRegistry registry, Commands commands, Server server, TextPrompt prompt,
+                       Consumer<Runnable> nextTick) {
+        this(registry, commands, renderer(server), prompt, nextTick);
     }
 
-    FarmScreens(FarmRegistry registry, Commands commands, Opener opener, Consumer<Runnable> nextTick) {
+    FarmScreens(FarmRegistry registry, Commands commands, Opener opener, TextPrompt prompt,
+                Consumer<Runnable> nextTick) {
         this.registry = registry;
         this.commands = commands;
         this.opener = opener;
+        this.prompt = prompt;
         this.nextTick = nextTick;
     }
 
@@ -115,7 +125,7 @@ public final class FarmScreens implements Listener {
     public void onClick(InventoryClickEvent event) {
         var press = ButtonMenu.press(event, FarmScreen.class);
         if (press == null) return;
-        var button = press.menu().button(press.slot());
+        var button = press.menu().button(press.slot(), press.right());
         if (button == null) return;
         if (button.leaves()) press.menu().close();
         button.action().run();
@@ -140,10 +150,14 @@ public final class FarmScreens implements Listener {
     private FarmScreen page(Player player, FarmScreen open, int page, UUID deleting) {
         var farms = registry.findByCreator(player.getUniqueId());
         var content = new FarmScreen();
+        content.exit(WAND_SLOT, new FarmScreen.Icon(Material.BLAZE_ROD, "Получить выделитель",
+                List.of("Для разметки новой фермы.")), () -> leave(player, "wand"));
         if (farms.isEmpty()) {
             return content.show(22, new FarmScreen.Icon(Material.PAPER, "Ферм пока нет",
-                    List.of("Разметьте ферму: /bake wand,", "затем ПКМ выделителем — меню.")));
+                    List.of("Возьмите выделитель внизу,", "затем ПКМ выделителем — меню разметки.")));
         }
+        content.exit(LIST_SLOT, new FarmScreen.Icon(Material.BOOK, "Список в чат",
+                List.of("Все ваши фермы с профилями.")), () -> leave(player, "list"));
         int pages = (farms.size() + FARMS_PER_PAGE - 1) / FARMS_PER_PAGE;
         int current = Math.clamp(page, 0, pages - 1);
         int first = current * FARMS_PER_PAGE;
@@ -167,12 +181,24 @@ public final class FarmScreens implements Listener {
     private void group(Player player, FarmScreen open, FarmScreen content, FarmRegistry.MarkedFarm farm, int slot,
                        int page, UUID deleting) {
         var id = farm.id().toString();
-        content.show(slot, new FarmScreen.Icon(BLOCKS.get(farm.state()), name(farm), describe(farm)));
+        var lore = new ArrayList<>(describe(farm));
+        lore.add("ЛКМ — подробности в чат");
+        lore.add("ПКМ — переименовать");
+        content.exit(slot, new FarmScreen.Icon(BLOCKS.get(farm.state()), name(farm), lore),
+                () -> leave(player, "info", FarmArguments.ID_FLAG, id),
+                () -> nextTick.accept(() -> prompt.ask(player, "Переименовать ферму " + name(farm),
+                        "Новое имя: латиница, цифры, _ и -", farm.name() == null ? "" : farm.name(), name -> {
+                            commands.run(player, "rename", FarmArguments.ID_FLAG, id, name);
+                            openList(player);
+                        })));
         MAIN.stream().filter(operation -> FarmOperations.accepts(operation.command(), farm.state()))
                 .filter(operation -> allowed(player, operation)).findFirst()
                 .ifPresent(operation -> operation(player, content, slot + 1, operation, id));
         if (FarmOperations.accepts(LONG_PROFILE.command(), farm.state())) {
             operation(player, content, slot + 2, LONG_PROFILE, id);
+        }
+        if (FarmOperations.accepts(CANCEL_PROFILING.command(), farm.state())) {
+            operation(player, content, slot + 3, CANCEL_PROFILING, id);
         }
         if (!FarmOperations.accepts("unregister", farm.state())) return;
         if (farm.id().equals(deleting)) {
@@ -199,10 +225,15 @@ public final class FarmScreens implements Listener {
     /** A button that closes the screen and runs the operation's command on the farm. */
     private void operation(Player player, FarmScreen content, int slot, Operation operation, String id) {
         content.exit(slot, new FarmScreen.Icon(operation.icon(), operation.title(), List.of(operation.description())),
-                () -> nextTick.accept(() -> {
-                    player.closeInventory();
-                    commands.run(player, operation.command(), FarmArguments.ID_FLAG, id);
-                }));
+                () -> leave(player, operation.command(), FarmArguments.ID_FLAG, id));
+    }
+
+    /** Closes the screen and runs the command, whose answer goes to chat. */
+    private void leave(Player player, String... command) {
+        nextTick.accept(() -> {
+            player.closeInventory();
+            commands.run(player, command);
+        });
     }
 
     private static String label(FarmRegistry.State state) {

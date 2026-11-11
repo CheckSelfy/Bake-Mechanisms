@@ -52,6 +52,7 @@ class MarkingControllerTest {
     private final java.util.List<MarkingMenu> opened = new java.util.ArrayList<>();
     private int tick;
     private final java.util.List<Player> farmScreens = new java.util.ArrayList<>();
+    private final java.util.List<java.util.function.Consumer<String>> prompts = new java.util.ArrayList<>();
     private MarkingController controller;
 
     private final JavaPlugin plugin = mock(JavaPlugin.class);
@@ -79,7 +80,8 @@ class MarkingControllerTest {
         when(pdc.get(new NamespacedKey("bakemechanisms", "marking_wand"), PersistentDataType.BYTE))
                 .thenReturn((byte) 1);
         controller = new MarkingController(plugin, registry, outputs, profiling, mock(FarmRemoval.class),
-                (viewer, menu, selection) -> opened.add(menu), Runnable::run, farmScreens::add);
+                (viewer, menu, selection) -> opened.add(menu), Runnable::run, farmScreens::add,
+                (viewer, title, label, initial, submit) -> prompts.add(submit));
     }
 
     @Test
@@ -637,6 +639,37 @@ class MarkingControllerTest {
                 controller.onTabComplete(player, command, "bake", new String[] { operation, "" }), operation));
         assertEquals(java.util.List.of(needs.id().toString()),
                 controller.onTabComplete(player, command, "bake", new String[] { "profile", "--id", "" }));
+    }
+
+    @Test
+    void registerWithNameAsksForTheNameInATextField() {
+        selectCorners();
+        selectOutput(1);
+        openMenu();
+        press(MarkingMenu.Button.REGISTER_NAMED);
+        assertEquals(1, prompts.size());
+        assertTrue(registry.findByCreator(creator).isEmpty(), "nothing is registered before the name is entered");
+        prompts.getFirst().accept("Iron");
+        assertEquals("Iron", registry.findByCreator(creator).getFirst().name());
+    }
+
+    @Test
+    void registerWithNameIsRefusedBeforeTheSelectionIsComplete() {
+        openMenu();
+        press(MarkingMenu.Button.REGISTER_NAMED);
+        assertTrue(prompts.isEmpty());
+        assertTrue(lastActionBar().startsWith("✖"), lastActionBar());
+    }
+
+    @Test
+    void menuSelectsTheContainerThePlayerLooksAt() {
+        selectCorners();
+        var container = output(1);
+        when(player.getTargetBlockExact(6)).thenReturn(container);
+        openMenu();
+        press(MarkingMenu.Button.SELECT_LOOKED);
+        run("register");
+        assertEquals(1, registry.findByCreator(creator).size());
     }
 
     private FarmRegistry.MarkedFarm farm(String name, int x) {

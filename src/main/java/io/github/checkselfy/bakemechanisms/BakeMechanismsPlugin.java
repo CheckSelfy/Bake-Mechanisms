@@ -8,6 +8,7 @@ import io.github.checkselfy.bakemechanisms.emulation.PaperEmulationWorld;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import io.github.checkselfy.bakemechanisms.marking.FarmRemoval;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
+import io.github.checkselfy.bakemechanisms.marking.DialogTextPrompt;
 import io.github.checkselfy.bakemechanisms.marking.FarmScreens;
 import io.github.checkselfy.bakemechanisms.marking.MarkingController;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
@@ -35,6 +36,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import org.bukkit.Material;
 import org.bukkit.command.TabExecutor;
@@ -138,10 +140,13 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
         // Farm screens run /bake subcommands, whose executor wraps the marking controller that opens the screens.
         var executor = new AtomicReference<TabExecutor>();
+        Consumer<Runnable> nextTick = task -> getServer().getScheduler().runTask(this, task);
+        var prompt = new DialogTextPrompt(nextTick);
         var farmScreens = new FarmScreens(registry,
                 (player, args) -> executor.get().onCommand(player, command, command.getName(), args), getServer(),
-                task -> getServer().getScheduler().runTask(this, task));
-        var marking = new MarkingController(this, registry, resolver, profiling, removal, farmScreens::openList);
+                prompt, nextTick);
+        var marking = new MarkingController(this, registry, resolver, profiling, removal, farmScreens::openList,
+                prompt);
         var commands = new StasisCommands(marking, registry, stasis, getLogger(),
                 task -> getServer().getScheduler().runTaskLater(this, task, 1L));
         executor.set(commands);

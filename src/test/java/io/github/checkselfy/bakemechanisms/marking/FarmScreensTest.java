@@ -29,6 +29,10 @@ class FarmScreensTest {
     private final List<FarmScreen> opened = new ArrayList<>();
     private int refreshed;
     private final List<List<String>> commands = new ArrayList<>();
+    private final List<TextPromptRecord> prompts = new ArrayList<>();
+
+    /** A text prompt shown to the player, with what submitting it does. */
+    private record TextPromptRecord(String title, String initial, java.util.function.Consumer<String> submit) { }
     private FarmScreens screens;
 
     @BeforeEach
@@ -38,7 +42,8 @@ class FarmScreensTest {
             @Override public void open(Player viewer, FarmScreen screen) { opened.add(screen); }
             @Override public void refresh(Player viewer, FarmScreen screen) { refreshed++; }
         };
-        screens = new FarmScreens(registry, (viewer, args) -> commands.add(List.of(args)), opener, Runnable::run);
+        TextPrompt prompt = (viewer, title, label, initial, submit) -> prompts.add(new TextPromptRecord(title, initial, submit));
+        screens = new FarmScreens(registry, (viewer, args) -> commands.add(List.of(args)), opener, prompt, Runnable::run);
     }
 
     @Test
@@ -70,7 +75,7 @@ class FarmScreensTest {
         screens.openList(player);
 
         assertActions("Needs", Material.CLOCK, Material.SPYGLASS, Material.BARRIER);
-        assertActions("Profiling", null, null, null);
+        assertActions("Profiling", null, null, Material.RED_DYE);
         assertActions("Ready", Material.BLUE_ICE, null, Material.BARRIER);
         assertActions("Stasis", Material.CAMPFIRE, null, null);
         assertEquals(1, opened.size(), "no separate screen per farm");
@@ -101,6 +106,69 @@ class FarmScreensTest {
         assertEquals(Material.SUGAR, material(slotOf("Iron") + 1));
         click(slotOf("Iron") + 1);
         assertEquals(List.of(List.of("sprint", "--id", farm.id().toString())), commands);
+    }
+
+    @Test
+    void leftClickOnTheStateBlockShowsDetailsAndRightClickRenamesInATextField() {
+        var farm = farm(creator, "Iron", 0);
+        var id = farm.id().toString();
+        screens.openList(player);
+        int state = slotOf("Iron");
+        assertTrue(icon(state).lore().contains("ЛКМ — подробности в чат"), icon(state).lore().toString());
+        assertTrue(icon(state).lore().contains("ПКМ — переименовать"), icon(state).lore().toString());
+
+        click(state);
+        assertEquals(List.of(List.of("info", "--id", id)), commands);
+        verify(player).closeInventory();
+
+        screens.openList(player);
+        click(slotOf("Iron"), ClickType.RIGHT, true);
+        assertEquals(1, prompts.size());
+        assertEquals("Iron", prompts.getFirst().initial());
+        int screensBefore = opened.size();
+        prompts.getFirst().submit().accept("Gold");
+        assertEquals(List.of("rename", "--id", id, "Gold"), commands.getLast());
+        assertEquals(screensBefore + 1, opened.size(), "the farm list comes back after renaming");
+    }
+
+    @Test
+    void unnamedFarmIsOfferedAnEmptyNameField() {
+        var world = UUID.randomUUID();
+        var point = new BlockPosition(world, 0, 0, 0);
+        registry.register(creator, new Cuboid(point, point), new OutputContainer(OutputContainer.Type.BARREL,
+                Set.of(new BlockPosition(world, 1, 0, 0))));
+        screens.openList(player);
+        click(slotOf("Без имени"), ClickType.RIGHT, true);
+        assertEquals("", prompts.getFirst().initial());
+    }
+
+    @Test
+    void profilingCanBeCancelledFromTheDeleteColumn() {
+        var farm = farm(creator, "Iron", 0);
+        registry.markProfiling(farm.id());
+        screens.openList(player);
+        assertEquals(Material.RED_DYE, material(slotOf("Iron") + 3));
+        click(slotOf("Iron") + 3);
+        assertEquals(List.of(List.of("cancel-profiling", "--id", farm.id().toString())), commands);
+    }
+
+    @Test
+    void bottomRowGivesTheWandAndListsFarmsInChat() {
+        farm(creator, "Iron", 0);
+        screens.openList(player);
+        assertEquals(Material.BLAZE_ROD, material(FarmScreens.WAND_SLOT));
+        assertEquals(Material.BOOK, material(FarmScreens.LIST_SLOT));
+        click(FarmScreens.WAND_SLOT);
+        screens.openList(player);
+        click(FarmScreens.LIST_SLOT);
+        assertEquals(List.of(List.of("wand"), List.of("list")), commands);
+    }
+
+    @Test
+    void emptyScreenStillGivesTheWand() {
+        screens.openList(player);
+        click(FarmScreens.WAND_SLOT);
+        assertEquals(List.of(List.of("wand")), commands);
     }
 
     @Test
@@ -145,8 +213,8 @@ class FarmScreensTest {
     @Test
     void emptyListSaysHowToMarkAFarm() {
         screens.openList(player);
-        assertEquals(1, last().icons().size());
-        assertTrue(last().icons().values().iterator().next().lore().toString().contains("/bake wand"));
+        assertTrue(last().icons().values().stream().anyMatch(icon -> icon.name().equals("Ферм пока нет")
+                && icon.lore().toString().contains("выделитель")));
     }
 
     @Test
