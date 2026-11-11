@@ -14,6 +14,7 @@ import io.github.checkselfy.bakemechanisms.marking.ReadyMechanismWatcher;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
 import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingProgressDisplay;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
@@ -105,7 +106,8 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         var drains = stored.values().stream().filter(FarmStorage.StoredFarm::draining).toList();
         emulation = new StasisEmulationService(new PaperEmulationWorld(paperWorld), tickets, emulationSettings,
                 loggingStore(storage));
-        profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining);
+        var progressDisplay = new ProfilingProgressDisplay(getServer());
+        profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining, progressDisplay);
         // Snapshots share the farm directories with FarmStorage; the stasis manifest is authoritative for STASIS.
         playerSafety = new OfflinePlayerSafety(getServer(), getDataFolder().toPath().resolve("offline-players.dat"));
         var stasisWorld = new PaperStasisWorld(this, resolver, playerSafety);
@@ -136,6 +138,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         command.setExecutor(commands);
         command.setTabCompleter(commands);
         getServer().getPluginManager().registerEvents(marking, this);
+        getServer().getPluginManager().registerEvents(progressDisplay, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
         getServer().getPluginManager().registerEvents(new ReadyMechanismWatcher(registry, getServer()), this);
         getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);

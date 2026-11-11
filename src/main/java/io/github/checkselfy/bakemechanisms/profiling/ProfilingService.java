@@ -18,12 +18,21 @@ import java.util.function.Predicate;
  * all methods run on the server thread.
  */
 public final class ProfilingService {
+    public interface ProgressListener {
+        default void started(MarkedFarm farm) { }
+
+        default void progressed(MarkedFarm farm, long elapsedTicks) { }
+
+        default void ended(UUID farmId) { }
+    }
+
     private final FarmRegistry registry;
     private final ProfilingWorld world;
     private final ProfilingSettings settings;
     private final Map<UUID, Session> sessions = new LinkedHashMap<>();
     private final ChunkTickets tickets;
     private final Predicate<UUID> draining;
+    private final ProgressListener progressListener;
 
     private static final class Session {
         final MarkedFarm farm;
@@ -54,11 +63,17 @@ public final class ProfilingService {
      */
     public ProfilingService(FarmRegistry registry, ProfilingWorld world, ProfilingSettings settings,
                             ChunkTickets tickets, Predicate<UUID> draining) {
+        this(registry, world, settings, tickets, draining, new ProgressListener() { });
+    }
+
+    public ProfilingService(FarmRegistry registry, ProfilingWorld world, ProfilingSettings settings,
+                            ChunkTickets tickets, Predicate<UUID> draining, ProgressListener progressListener) {
         this.draining = Objects.requireNonNull(draining, "draining");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.world = Objects.requireNonNull(world, "world");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.tickets = Objects.requireNonNull(tickets, "tickets");
+        this.progressListener = Objects.requireNonNull(progressListener, "progressListener");
     }
 
     public void start(UUID farmId, UUID actorId) {
@@ -91,6 +106,7 @@ public final class ProfilingService {
         registry.markProfiling(farm.id());
         var session = new Session(farm, chunks, new ProfileCalculator(baseline, settings));
         sessions.put(farm.id(), session);
+        progressListener.started(farm);
         if (session.calculator.saturated()) reportFull(session);
     }
 
@@ -135,6 +151,7 @@ public final class ProfilingService {
                 if (session.calculator.saturated()) reportFull(session);
             }
             if (last) finish(session);
+            else progressListener.progressed(session.farm, session.elapsed);
         }
     }
 
@@ -186,6 +203,7 @@ public final class ProfilingService {
     private void end(Session session) {
         sessions.remove(session.farm.id());
         session.chunks.forEach(tickets::release);
+        progressListener.ended(session.farm.id());
     }
 
     private static Set<ChunkPosition> chunksOf(MarkedFarm farm) {
