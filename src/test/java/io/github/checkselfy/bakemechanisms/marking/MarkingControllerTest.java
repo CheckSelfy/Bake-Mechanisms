@@ -305,6 +305,7 @@ class MarkingControllerTest {
         when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
         when(profiling.remainingTicks(farm.id(), creator)).thenReturn(1200L);
         when(player.performCommand("tick sprint 1200")).thenReturn(true);
+        registry.markProfiling(farm.id());
 
         run("sprint", "Iron");
 
@@ -370,6 +371,7 @@ class MarkingControllerTest {
         selectCorners();
         selectOutput(1);
         run("register", "Iron");
+        registry.markProfiling(registry.findByCreator(creator).getFirst().id());
         assertEquals(java.util.List.of("Iron", "--id"),
                 controller.onTabComplete(player, command, "bake", new String[] { "cancel-profiling", "" }));
         assertEquals(java.util.List.of("confirm"),
@@ -615,6 +617,32 @@ class MarkingControllerTest {
         press(MarkingMenu.Button.FARMS);
         assertEquals(2, farmScreens.size());
         assertTrue(controller.onTabComplete(player, command, "bake", new String[] { "ma" }).contains("manage"));
+    }
+
+    @Test
+    void farmsAreCompletedOnlyForCommandsTheirStateAllows() {
+        when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
+        var needs = farm("Needs", 0);
+        var profiling = farm("Profiling", 64);
+        registry.markProfiling(profiling.id());
+        var cases = java.util.Map.of(
+                "profile", java.util.List.of("Needs", "--id"),
+                "profile-long", java.util.List.of("Needs", "--id"),
+                "sprint", java.util.List.of("Profiling", "--id"),
+                "cancel-profiling", java.util.List.of("Profiling", "--id"),
+                "unregister", java.util.List.of("Needs", "--id"),
+                "info", java.util.List.of("Needs", "Profiling", "--id"),
+                "rename", java.util.List.of("Needs", "Profiling", "--id"));
+        cases.forEach((operation, expected) -> assertEquals(expected,
+                controller.onTabComplete(player, command, "bake", new String[] { operation, "" }), operation));
+        assertEquals(java.util.List.of(needs.id().toString()),
+                controller.onTabComplete(player, command, "bake", new String[] { "profile", "--id", "" }));
+    }
+
+    private FarmRegistry.MarkedFarm farm(String name, int x) {
+        var mechanism = new Cuboid(new BlockPosition(worldId, x, 0, 0), new BlockPosition(worldId, x, 0, 0));
+        return registry.register(creator, name, mechanism, java.util.List.of(new OutputContainer(
+                OutputContainer.Type.BARREL, Set.of(new BlockPosition(worldId, x + 1, 0, 0)))));
     }
 
     private void openMenu() {

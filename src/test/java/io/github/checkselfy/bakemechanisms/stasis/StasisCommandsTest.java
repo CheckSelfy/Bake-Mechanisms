@@ -7,7 +7,9 @@ import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
 import io.github.checkselfy.bakemechanisms.marking.Cuboid;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import io.github.checkselfy.bakemechanisms.marking.OutputContainer;
+import io.github.checkselfy.bakemechanisms.profiling.ProductionProfile;
 import java.util.Set;
+import org.bukkit.Material;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.bukkit.command.Command;
@@ -51,12 +53,33 @@ class StasisCommandsTest {
         var point = new BlockPosition(world, 0, 64, 0);
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(OutputContainer.Type.BARREL,
                 Set.of(new BlockPosition(world, 1, 64, 0))));
+        registry.markProfiling(farm.id());
+        registry.markReady(farm.id(), new ProductionProfile(java.util.List.of(java.util.Map.of(Material.CACTUS, 1.0)), 3600));
+        registry.markStasis(farm.id());
         assertEquals(java.util.List.of("--id"), commands.onTabComplete(player(creator), command,
                 "bake", new String[] { "unstasis", "" }), "an unnamed farm is reached through --id");
         assertEquals(java.util.List.of(farm.id().toString()), commands.onTabComplete(player(creator), command,
                 "bake", new String[] { "unstasis", "--id", "" }));
         assertTrue(commands.onTabComplete(player(UUID.randomUUID()), command, "bake",
                 new String[] { "unstasis", "--id", "" }).isEmpty());
+    }
+
+    @Test void farmsAreCompletedOnlyForTheOperationTheirStateAllows() {
+        var world = UUID.randomUUID();
+        var ready = registry.register(creator, "Ready", new Cuboid(new BlockPosition(world, 0, 64, 0),
+                new BlockPosition(world, 0, 64, 0)), java.util.List.of(new OutputContainer(OutputContainer.Type.BARREL,
+                Set.of(new BlockPosition(world, 1, 64, 0)))));
+        registry.markProfiling(ready.id());
+        registry.markReady(ready.id(), new ProductionProfile(java.util.List.of(java.util.Map.of(Material.CACTUS, 1.0)), 3600));
+        registry.register(creator, "Needs", new Cuboid(new BlockPosition(world, 64, 64, 0),
+                new BlockPosition(world, 64, 64, 0)), java.util.List.of(new OutputContainer(OutputContainer.Type.BARREL,
+                Set.of(new BlockPosition(world, 65, 64, 0)))));
+        assertEquals(java.util.List.of("Ready", "--id"), commands.onTabComplete(player(creator), command, "bake",
+                new String[] { "stasis", "" }));
+        assertEquals(java.util.List.of(ready.id().toString()), commands.onTabComplete(player(creator), command, "bake",
+                new String[] { "stasis", "--id", "" }));
+        assertEquals(java.util.List.of("--id"), commands.onTabComplete(player(creator), command, "bake",
+                new String[] { "unstasis", "" }));
     }
 
     @Test void badUuidAndInvalidStateProduceReadableMessages() {

@@ -19,7 +19,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 
 /**
  * The screen of a player's farms. Each farm is a group of four slots: a block showing its state, the operation its
- * state allows (profile, stasis or unstasis), long profiling and deletion; a slot whose action the state does not
+ * state allows (profile, sprint, stasis or unstasis), long profiling and deletion; a slot whose action the state does not
  * allow stays empty, so every action keeps its column. Operations run the {@code /bake}
  * subcommands as the player, so their rules, creator checks and messages stay those of the commands. Deletion is
  * confirmed by a second click on the same slot. Server thread only.
@@ -46,16 +46,17 @@ public final class FarmScreens implements Listener {
         void refresh(Player player, FarmScreen screen);
     }
 
-    /** The operation a state allows next to the state block. */
+    /** An operation on a farm, run as {@code /bake <command> --id <UUID>}. */
     private record Operation(String command, Material icon, String title, String description) { }
 
-    private static final Map<FarmRegistry.State, Operation> OPERATIONS = Map.of(
-            FarmRegistry.State.NEEDS_PROFILING, new Operation("profile", Material.CLOCK, "Профилировать",
+    /** Candidates for the slot right of the state block; the first one the farm's state accepts is shown. */
+    private static final List<Operation> MAIN = List.of(
+            new Operation("profile", Material.CLOCK, "Профилировать",
                     "Замер на " + ProfilingSettings.DURATION_TICKS + " тиков."),
-            FarmRegistry.State.READY, new Operation("stasis", Material.BLUE_ICE, "В стазис",
-                    "Механизм заменится заполнителем."),
-            FarmRegistry.State.STASIS, new Operation("unstasis", Material.CAMPFIRE, "Из стазиса",
-                    "Механизм вернётся; нужен новый замер."));
+            new Operation("sprint", Material.SUGAR, "Ускорить замер",
+                    "Ускоряет весь сервер до конца замера."),
+            new Operation("stasis", Material.BLUE_ICE, "В стазис", "Механизм заменится заполнителем."),
+            new Operation("unstasis", Material.CAMPFIRE, "Из стазиса", "Механизм вернётся; нужен новый замер."));
 
     private static final Operation LONG_PROFILE = new Operation("profile-long", Material.SPYGLASS,
             "Долгое профилирование", "Замер на " + ProfilingSettings.LONG_DURATION_TICKS + " тиков, точнее.");
@@ -167,10 +168,13 @@ public final class FarmScreens implements Listener {
                        int page, UUID deleting) {
         var id = farm.id().toString();
         content.show(slot, new FarmScreen.Icon(BLOCKS.get(farm.state()), name(farm), describe(farm)));
-        var operation = OPERATIONS.get(farm.state());
-        if (operation != null) operation(player, content, slot + 1, operation, id);
-        if (farm.state() == FarmRegistry.State.NEEDS_PROFILING) operation(player, content, slot + 2, LONG_PROFILE, id);
-        if (farm.state() != FarmRegistry.State.NEEDS_PROFILING && farm.state() != FarmRegistry.State.READY) return;
+        MAIN.stream().filter(operation -> FarmOperations.accepts(operation.command(), farm.state()))
+                .filter(operation -> allowed(player, operation)).findFirst()
+                .ifPresent(operation -> operation(player, content, slot + 1, operation, id));
+        if (FarmOperations.accepts(LONG_PROFILE.command(), farm.state())) {
+            operation(player, content, slot + 2, LONG_PROFILE, id);
+        }
+        if (!FarmOperations.accepts("unregister", farm.state())) return;
         if (farm.id().equals(deleting)) {
             content.button(slot + 3, new FarmScreen.Icon(Material.TNT, "Точно удалить?",
                     List.of("Нажмите ещё раз в течение " + FarmRemoval.CONFIRMATION_SECONDS + " с.",
@@ -185,6 +189,11 @@ public final class FarmScreens implements Listener {
                         show(player, open, page, farm.id());
                     });
         }
+    }
+
+    /** Sprint runs the vanilla {@code /tick sprint}, so only players allowed to use {@code /tick} get it. */
+    private static boolean allowed(Player player, Operation operation) {
+        return !operation.command().equals("sprint") || player.hasPermission(MarkingController.TICK_PERMISSION);
     }
 
     /** A button that closes the screen and runs the operation's command on the farm. */

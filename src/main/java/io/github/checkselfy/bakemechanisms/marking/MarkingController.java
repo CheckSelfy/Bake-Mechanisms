@@ -535,7 +535,7 @@ public final class MarkingController implements Listener, TabExecutor {
         var operation = args[0].toLowerCase(Locale.ROOT);
         if (!FARM_COMMANDS.contains(operation)) return List.of();
         if (operation.equals("sprint") && !player.hasPermission(TICK_PERMISSION)) return List.of();
-        var farms = registry.findByCreator(player.getUniqueId());
+        var farms = FarmOperations.eligible(operation, registry.findByCreator(player.getUniqueId()));
         var reference = FarmArguments.complete(farms, args, 1);
         if (reference != null) return reference;
         int afterReference = args[1].equalsIgnoreCase(FarmArguments.ID_FLAG) ? 3 : 2;

@@ -1,6 +1,7 @@
 package io.github.checkselfy.bakemechanisms.stasis;
 
 import io.github.checkselfy.bakemechanisms.marking.FarmArguments;
+import io.github.checkselfy.bakemechanisms.marking.FarmOperations;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,7 +109,8 @@ public final class StasisCommands implements TabExecutor {
             return List.copyOf(result);
         }
         if (isStasisCommand(args[0])) {
-            var reference = FarmArguments.complete(registry.findByCreator(player.getUniqueId()), args, 1);
+            var farms = FarmOperations.eligible(args[0], registry.findByCreator(player.getUniqueId()));
+            var reference = FarmArguments.complete(farms, args, 1);
             return reference == null ? List.of() : reference;
         }
         return otherCommands.onTabComplete(sender, command, alias, args);

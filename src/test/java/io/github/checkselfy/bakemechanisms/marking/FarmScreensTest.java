@@ -90,6 +90,20 @@ class FarmScreensTest {
     }
 
     @Test
+    void profilingFarmOffersSprintOnlyToPlayersAllowedToUseTick() {
+        var farm = farm(creator, "Iron", 0);
+        registry.markProfiling(farm.id());
+        screens.openList(player);
+        assertNull(material(slotOf("Iron") + 1));
+
+        when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
+        screens.openList(player);
+        assertEquals(Material.SUGAR, material(slotOf("Iron") + 1));
+        click(slotOf("Iron") + 1);
+        assertEquals(List.of(List.of("sprint", "--id", farm.id().toString())), commands);
+    }
+
+    @Test
     void stasisAndUnstasisRunTheirCommands() {
         var ready = ready(farm(creator, "Ready", 0));
         var stasis = ready(farm(creator, "Stasis", 1));
