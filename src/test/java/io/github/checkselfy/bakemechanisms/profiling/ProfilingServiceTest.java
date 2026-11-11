@@ -34,7 +34,7 @@ class ProfilingServiceTest {
         assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
         assertEquals(Set.of(chunk(0, 0), chunk(1, 0), chunk(3, 0)), world.tickets);
 
-        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.COBBLESTONE, 187), false));
+        world.produce(farm.outputs().get(0), Material.COBBLESTONE, 20);
         tick(ProfilingSettings.DURATION_TICKS - 1);
         assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
         tick(1);
@@ -102,7 +102,7 @@ class ProfilingServiceTest {
         service.start(second.id(), creator);
         assertEquals(Set.of(chunk(0, 0), chunk(2, 0), chunk(5, 0)), world.tickets);
 
-        world.contents.put(first.outputs().get(0), new OutputSnapshot(Map.of(Material.KELP, 360), false));
+        world.produce(first.outputs().get(0), Material.KELP, 10);
         tick(ProfilingSettings.DURATION_TICKS - 100);
         assertEquals(State.READY, registry.requireCreator(first.id(), creator).state());
         assertEquals(State.PROFILING, registry.requireCreator(second.id(), creator).state());
@@ -165,10 +165,14 @@ class ProfilingServiceTest {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.SAND, 1), false));
         sparse.start(farm.id(), creator);
-        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.SAND, 181), false));
-        for (int i = 0; i < ProfilingSettings.DURATION_TICKS; i++) sparse.tick();
+        world.produce(farm.outputs().get(0), Material.SAND, 20);
+        for (int i = 0; i < ProfilingSettings.DURATION_TICKS; i++) {
+            world.advance();
+            sparse.tick();
+        }
         assertEquals(1 + 4, world.reads); // baseline + 1000, 2000, 3000, 3600
-        assertEquals(new ProductionProfile(Map.of(Material.SAND, 1.0), 3600),
+        // Measured from the first snapshot with new items (1000) to the end.
+        assertEquals(new ProductionProfile(Map.of(Material.SAND, 1.0), 2600),
                 registry.requireCreator(farm.id(), creator).profile());
     }
 
@@ -200,10 +204,10 @@ class ProfilingServiceTest {
         assertEquals(List.of(first, second), world.locked);
         assertEquals(Set.of(chunk(0, 0), chunk(3, 0), chunk(5, 0)), world.tickets);
 
-        world.contents.put(first, new OutputSnapshot(Map.of(Material.ARROW, 10), false));
-        world.contents.put(second, new OutputSnapshot(Map.of(Material.BONE, 23), false));
+        world.produce(first, Material.ARROW, 20);
+        world.produce(second, Material.BONE, 10);
         tick(200);
-        world.contents.put(second, new OutputSnapshot(Map.of(Material.BONE, 27), true));
+        world.full.add(second);
         tick(20);
         var messages = world.messages.get(creator);
         assertEquals(1, messages.size());
@@ -214,7 +218,7 @@ class ProfilingServiceTest {
         assertEquals(1, world.messages.get(creator).stream().filter(message -> message.contains("заполнился"))
                 .count(), "reported once");
         var profile = registry.requireCreator(farm.id(), creator).profile();
-        assertEquals(200, profile.usefulTicks());
+        assertEquals(180, profile.usefulTicks(), "from the first items at tick 20 to the last snapshot before 220");
         assertEquals(List.of(Map.of(Material.ARROW, 1.0), Map.of(Material.BONE, 2.0)), profile.outputs());
     }
 
@@ -244,8 +248,23 @@ class ProfilingServiceTest {
                 "sprinting the remaining ticks finishes profiling");
     }
 
+    @Test
+    void farmSwitchedOnLongAfterProfilingStartedGetsItsFullRate() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
+        service.start(farm.id(), creator);
+        tick(1500); // the creator has not switched the farm on yet
+        world.produce(farm.outputs().get(0), Material.STRING, 20);
+        tick(ProfilingSettings.DURATION_TICKS - 1500);
+        var profile = registry.requireCreator(farm.id(), creator).profile();
+        assertEquals(Map.of(Material.STRING, 1.0), profile.ratesPer20Ticks());
+    }
+
     private void tick(int ticks) {
-        for (int i = 0; i < ticks; i++) service.tick();
+        for (int i = 0; i < ticks; i++) {
+            world.advance();
+            service.tick();
+        }
     }
 
     private FarmRegistry.MarkedFarm register(Cuboid mechanism, OutputContainer output) {
@@ -271,15 +290,34 @@ class ProfilingServiceTest {
         final Set<Cuboid> occupied = new HashSet<>();
         final Map<UUID, List<String>> messages = new HashMap<>();
         final List<OutputContainer> locked = new ArrayList<>();
+        /** Outputs that receive one item of a type every given number of ticks. */
+        final Map<OutputContainer, Map.Entry<Material, Integer>> production = new HashMap<>();
+        final Set<OutputContainer> full = new HashSet<>();
         int reads;
+        long time;
         ChunkPosition failingTicket;
+
+        void produce(OutputContainer output, Material type, int everyTicks) {
+            production.put(output, Map.entry(type, everyTicks));
+        }
+
+        /** One server tick of the simulated farms. */
+        void advance() {
+            time++;
+            production.forEach((output, item) -> {
+                if (time % item.getValue() != 0) return;
+                var counts = new HashMap<>(contents.get(output).counts());
+                counts.merge(item.getKey(), 1, Integer::sum);
+                contents.put(output, new OutputSnapshot(counts, false));
+            });
+        }
 
         @Override
         public OutputSnapshot readOutput(OutputContainer output) {
             reads++;
             var snapshot = contents.get(output);
             if (snapshot == null) throw new IllegalStateException("Выходной контейнер не найден.");
-            return snapshot;
+            return full.contains(output) ? new OutputSnapshot(snapshot.counts(), true) : snapshot;
         }
 
         @Override
