@@ -7,8 +7,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -21,6 +24,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -42,11 +48,15 @@ public final class MarkingController implements Listener, TabExecutor {
     static final Map<String, String> RENAMED = Map.of("output", "select-output", "clear", "unselect",
             "cancel", "cancel-profiling", "restore", "unstasis", "delete", "unregister");
     private static final String FARM_USAGE = FarmArguments.USAGE;
-    private static final String HELP = "/bake wand | select-output | unselect | register [имя] | list | info "
+    private static final String HELP = "ПКМ выделителем — меню разметки. /bake wand | select-output | unselect | register [имя] | list | info "
             + FARM_USAGE + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | profile-long " + FARM_USAGE + " | sprint " + FARM_USAGE
             + " (ускоряет весь сервер) | cancel-profiling " + FARM_USAGE + " | stasis " + FARM_USAGE + " | unstasis "
             + FARM_USAGE + " | unregister " + FARM_USAGE + " [confirm]";
     private static final String CONFIRM = "confirm";
+    static final String GUIDE = "Разметка выделителем: ПКМ открывает меню. В меню выберите, что отмечать, затем ЛКМ по"
+            + " блоку: первый угол, второй угол, выходной контейнер (повторный выбор контейнера убирает его). После"
+            + " каждого выбора выделитель сам переходит к тому, чего не хватает. Когда всё выбрано — «Зарегистрировать"
+            + " ферму» в меню или /bake register [имя]. Состояние видно над панелью предметов.";
     /** Permission of the vanilla {@code /tick} command; {@code /bake sprint} needs it too. */
     static final String TICK_PERMISSION = "minecraft.command.tick";
     private final JavaPlugin plugin;
@@ -55,22 +65,43 @@ public final class MarkingController implements Listener, TabExecutor {
     private final ProfilingService profiling;
     private final FarmRemoval removal;
     private final NamespacedKey wandKey;
-    private final Map<UUID, Selection> selections = new HashMap<>();
+    private final MarkingMenu.Opener menus;
+    /** Runs a task on the next server tick: inventories must not be opened or closed inside a click event. */
+    private final Consumer<Runnable> nextTick;
+    private final Map<UUID, MarkingSelection> selections = new HashMap<>();
+    /** The last wand click of each player, to drop the repeated events one physical click can produce. */
+    private final Map<UUID, WandClick> lastClicks = new HashMap<>();
 
-    /** An output container chosen with the wand, with the block that was clicked to choose it. */
-    private record SelectedOutput(BlockPosition anchor, OutputContainer output) { }
+    /** A wand click: the block for a left click, null for a right click that opens the menu. */
+    private record WandClick(BlockPosition block, int tick) { }
 
-    private record Selection(BlockPosition first, BlockPosition second, List<SelectedOutput> outputs) {
-        private Selection() { this(null, null, List.of()); }
-    }
+    /**
+     * Ticks within which a repeated click is the same physical click: a right click on a block is followed by a
+     * right click in the air, and a held left click in creative repeats every few ticks.
+     */
+    static final int REPEAT_TICKS = 6;
+    /** How long the result of a step stays in the action bar before the current status replaces it. */
+    static final int NOTICE_TICKS = 60;
+    private final Map<UUID, Notice> notices = new HashMap<>();
+
+    private record Notice(Component text, int until) { }
 
     public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
                              ProfilingService profiling, FarmRemoval removal) {
+        this(plugin, registry, outputs, profiling, removal, MarkingMenu.renderer(plugin.getServer()),
+                task -> plugin.getServer().getScheduler().runTask(plugin, task));
+    }
+
+    MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
+                      ProfilingService profiling, FarmRemoval removal, MarkingMenu.Opener menus,
+                      Consumer<Runnable> nextTick) {
         this.plugin = plugin;
         this.registry = registry;
         this.outputs = outputs;
         this.profiling = profiling;
         this.removal = removal;
+        this.menus = menus;
+        this.nextTick = nextTick;
         this.wandKey = new NamespacedKey(plugin, "marking_wand");
     }
 
@@ -152,8 +183,7 @@ public final class MarkingController implements Listener, TabExecutor {
                 }
                 case "unselect" -> {
                     requireArguments(args, 1);
-                    selections.remove(actor);
-                    player.sendMessage("Текущее выделение очищено.");
+                    unselect(player);
                 }
                 default -> {
                     var former = args[0].toLowerCase(Locale.ROOT);
@@ -217,13 +247,13 @@ public final class MarkingController implements Listener, TabExecutor {
         var wand = new ItemStack(Material.BLAZE_ROD);
         var meta = wand.getItemMeta();
         meta.displayName(Component.text("Выделитель Bake Mechanisms"));
-        meta.lore(List.of(Component.text("ЛКМ/ПКМ — углы; Shift+ПКМ — выходной контейнер")));
+        meta.lore(List.of(Component.text("ПКМ — меню разметки"), Component.text("ЛКМ по блоку — выбрать блок")));
         meta.getPersistentDataContainer().set(wandKey, PersistentDataType.BYTE, (byte) 1);
         wand.setItemMeta(meta);
         if (!player.getInventory().addItem(wand).isEmpty()) {
             throw new IllegalArgumentException("Освободите место в инвентаре для выделителя.");
         }
-        player.sendMessage("ЛКМ — первый угол, ПКМ — второй, Shift+ПКМ — выход. Затем /bake register.");
+        player.sendMessage(GUIDE);
     }
 
     private boolean isWand(ItemStack item) {
@@ -234,47 +264,178 @@ public final class MarkingController implements Listener, TabExecutor {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
+        if (event.getHand() == EquipmentSlot.OFF_HAND && isWand(event.getPlayer().getInventory().getItemInMainHand())) {
+            // A click with the wand also reaches the off hand: it must not place or use what the off hand holds.
+            event.setUseInteractedBlock(Event.Result.DENY);
+            event.setUseItemInHand(Event.Result.DENY);
+            return;
+        }
         if (!isWand(event.getItem())) return;
         event.setUseInteractedBlock(Event.Result.DENY);
         event.setUseItemInHand(Event.Result.DENY);
-        if (event.getHand() != EquipmentSlot.HAND || event.getClickedBlock() == null) return;
-        if (event.getAction() != Action.LEFT_CLICK_BLOCK && event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        if (event.getHand() != EquipmentSlot.HAND) return;
         var player = event.getPlayer();
-        try {
-            if (event.getAction() == Action.RIGHT_CLICK_BLOCK && player.isSneaking()) {
-                selectOutput(player, event.getClickedBlock());
-                return;
-            }
-            var block = PaperOutputResolver.position(event.getClickedBlock());
-            var old = selections.getOrDefault(player.getUniqueId(), new Selection());
-            boolean first = event.getAction() == Action.LEFT_CLICK_BLOCK;
-            var other = first ? old.second() : old.first();
-            if (other != null && !other.worldId().equals(block.worldId())) {
-                throw new IllegalArgumentException("Углы должны находиться в одном мире. Сброс: /bake unselect.");
-            }
-            selections.put(player.getUniqueId(), new Selection(first ? block : old.first(),
-                    first ? old.second() : block, old.outputs()));
-            player.sendMessage((first ? "Первый" : "Второй") + " угол: " + coordinates(block));
-        } catch (IllegalArgumentException error) {
-            player.sendMessage(error.getMessage());
+        if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+            if (!repeated(player, null)) menus.open(player, new MarkingMenu(), selection(player));
+            return;
         }
+        if (event.getAction() != Action.LEFT_CLICK_BLOCK || event.getClickedBlock() == null) return;
+        try {
+            if (!repeated(player, PaperOutputResolver.position(event.getClickedBlock()))) {
+                apply(player, event.getClickedBlock());
+            }
+        } catch (IllegalArgumentException error) {
+            failed(player, error.getMessage());
+        }
+    }
+
+    /** Records the click and tells whether it repeats the previous one; a held click keeps being a repeat. */
+    private boolean repeated(Player player, BlockPosition block) {
+        int tick = plugin.getServer().getCurrentTick();
+        var last = lastClicks.put(player.getUniqueId(), new WandClick(block, tick));
+        return last != null && Objects.equals(last.block(), block) && tick - last.tick() < REPEAT_TICKS;
+    }
+
+    /**
+     * Every click on an open menu is cancelled, including clicks in the player's own inventory below it, so menu
+     * items can be neither taken nor moved and nothing can be shift-clicked in. Only a plain left or right click on a
+     * menu button presses it.
+     */
+    @EventHandler
+    public void onMenuClick(InventoryClickEvent event) {
+        var top = event.getView().getTopInventory();
+        if (!(top.getHolder(false) instanceof MarkingMenu menu)) return;
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player) || menu.closing()) return;
+        if (event.getClickedInventory() != top) return;
+        if (event.getClick() != ClickType.LEFT && event.getClick() != ClickType.RIGHT) return;
+        MarkingMenu.Button.at(event.getRawSlot()).ifPresent(button -> press(player, menu, button));
+    }
+
+    @EventHandler
+    public void onMenuDrag(InventoryDragEvent event) {
+        if (event.getView().getTopInventory().getHolder(false) instanceof MarkingMenu) event.setCancelled(true);
+    }
+
+    private void press(Player player, MarkingMenu menu, MarkingMenu.Button button) {
+        menu.close();
+        try {
+            switch (button) {
+                case FIRST_CORNER, SECOND_CORNER, OUTPUT -> {
+                    closeMenu(player);
+                    selections.put(player.getUniqueId(), selection(player).withMode(button.mode()));
+                    notice(player, "Режим: " + button.mode().label() + " → ЛКМ по блоку", NamedTextColor.YELLOW);
+                }
+                case REGISTER -> {
+                    closeMenu(player);
+                    register(player, null);
+                }
+                case UNSELECT -> {
+                    unselect(player);
+                    // Shown again with the empty selection, unless the player closed the menu or left meanwhile.
+                    nextTick.accept(() -> {
+                        if (player.isOnline() && player.getOpenInventory().getTopInventory().getHolder(false) == menu) {
+                            menus.open(player, new MarkingMenu(), selection(player));
+                        }
+                    });
+                }
+                case HELP -> {
+                    closeMenu(player);
+                    player.sendMessage(GUIDE);
+                }
+            }
+        } catch (IllegalArgumentException error) {
+            failed(player, error.getMessage());
+        }
+    }
+
+    private void closeMenu(Player player) {
+        nextTick.accept(player::closeInventory);
+    }
+
+    private void unselect(Player player) {
+        selections.remove(player.getUniqueId());
+        player.sendMessage("Текущее выделение очищено.");
+        notice(player, "✔ Выделение очищено → ЛКМ по блоку: первый угол", NamedTextColor.GREEN);
+    }
+
+    private void succeeded(Player player, String message) {
+        player.sendMessage(message);
+        notice(player, "✔ " + message + " → " + selection(player).hint(), NamedTextColor.GREEN);
+    }
+
+    private void failed(Player player, String message) {
+        player.sendMessage(message);
+        notice(player, "✖ " + message, NamedTextColor.RED);
+    }
+
+    /** Shows the result of a step in the action bar; {@link #refreshActionBars} keeps it there for a while. */
+    private void notice(Player player, String text, NamedTextColor color) {
+        var notice = new Notice(Component.text(text, color), plugin.getServer().getCurrentTick() + NOTICE_TICKS);
+        notices.put(player.getUniqueId(), notice);
+        player.sendActionBar(notice.text());
+    }
+
+    /**
+     * Keeps the action bar of every player holding the wand up to date: the result of the last step while it is
+     * fresh, then the mode, chosen corners, outputs and next step. Called about once a second.
+     */
+    public void refreshActionBars() {
+        int tick = plugin.getServer().getCurrentTick();
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            if (!isWand(player.getInventory().getItemInMainHand())) continue;
+            var notice = notices.get(player.getUniqueId());
+            if (notice != null && notice.until() > tick) {
+                player.sendActionBar(notice.text());
+            } else {
+                notices.remove(player.getUniqueId());
+                player.sendActionBar(Component.text(selection(player).status(), NamedTextColor.YELLOW));
+            }
+        }
+    }
+
+    /** Selects the clicked block as what the wand mode names, then moves the wand to what is still missing. */
+    private void apply(Player player, Block clicked) {
+        var mode = selection(player).mode();
+        if (mode == MarkingSelection.Mode.OUTPUT) {
+            selectOutput(player, clicked);
+            return;
+        }
+        var block = PaperOutputResolver.position(clicked);
+        var old = selection(player);
+        var other = mode == MarkingSelection.Mode.FIRST_CORNER ? old.second() : old.first();
+        if (other != null && !other.worldId().equals(block.worldId())) {
+            throw new IllegalArgumentException("Углы должны находиться в одном мире. Сброс: /bake unselect.");
+        }
+        selections.put(player.getUniqueId(), old.withCorner(mode, block).advanced());
+        succeeded(player, capitalized(mode.label()) + ": " + coordinates(block));
+    }
+
+    private static String capitalized(String text) {
+        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 
     /** Adds the container to the selection, or removes it when it is already selected. */
     private void selectOutput(Player player, Block block) {
         var output = outputs.resolve(block);
-        var old = selections.getOrDefault(player.getUniqueId(), new Selection());
+        var old = selection(player);
         var selected = new ArrayList<>(old.outputs());
         boolean removed = selected.removeIf(entry -> entry.output().equals(output));
-        if (!removed) selected.add(new SelectedOutput(PaperOutputResolver.position(block), output));
-        selections.put(player.getUniqueId(), new Selection(old.first(), old.second(), selected));
+        if (!removed) selected.add(new MarkingSelection.SelectedOutput(PaperOutputResolver.position(block), output));
+        selections.put(player.getUniqueId(), old.withOutputs(selected).advanced());
         player.sendMessage((removed ? "Выходной контейнер убран из выделения: " : "Выходной контейнер добавлен: ")
                 + output.type() + ", блоков: " + output.blocks().size() + ". Выбрано выходных контейнеров: " + selected.size()
                 + ". Повторный выбор контейнера убирает его.");
+        notice(player, "✔ Выходной контейнер " + (removed ? "убран" : "добавлен") + " (" + selected.size() + ") → "
+                + selection(player).hint(), NamedTextColor.GREEN);
+    }
+
+    private MarkingSelection selection(Player player) {
+        return selections.getOrDefault(player.getUniqueId(), MarkingSelection.empty());
     }
 
     private void register(Player player, String name) {
-        var selection = selections.getOrDefault(player.getUniqueId(), new Selection());
+        var selection = selection(player);
         if (selection.first() == null || selection.second() == null || selection.outputs().isEmpty()) {
             throw new IllegalArgumentException("Выберите оба угла и хотя бы один выходной контейнер выделителем.");
         }
@@ -300,6 +461,8 @@ public final class MarkingController implements Listener, TabExecutor {
         }
         var farm = registry.register(player.getUniqueId(), name, mechanism, current);
         selections.remove(player.getUniqueId());
+        notice(player, "✔ Ферма зарегистрирована: " + farm.title() + " → /bake profile " + farm.reference(),
+                NamedTextColor.GREEN);
         player.sendMessage("Ферма зарегистрирована" + (name == null
                 ? " без имени: указывайте её как " + farm.reference() + " или задайте имя через /bake rename."
                 : " как " + name + "."));
@@ -331,7 +494,7 @@ public final class MarkingController implements Listener, TabExecutor {
     }
 
     private static String coordinates(BlockPosition block) {
-        return block.x() + ", " + block.y() + ", " + block.z();
+        return MarkingSelection.coordinates(block);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -342,6 +505,8 @@ public final class MarkingController implements Listener, TabExecutor {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         selections.remove(event.getPlayer().getUniqueId());
+        notices.remove(event.getPlayer().getUniqueId());
+        lastClicks.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler

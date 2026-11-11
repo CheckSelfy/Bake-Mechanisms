@@ -339,9 +339,10 @@ public final class CorrectnessPlugin extends JavaPlugin {
         a.getInventory().clear();
         command(a, "wand");
         a.getInventory().setHeldItemSlot(0);
-        interact(world, Action.RIGHT_CLICK_BLOCK, x + 15, 70, 15, false);
+        // The wand moves on by itself: first corner, second corner, then the output container.
+        interact(world, Action.LEFT_CLICK_BLOCK, x + 15, 70, 15, false);
         interact(world, Action.LEFT_CLICK_BLOCK, x, 63, 0, false);
-        interact(world, Action.RIGHT_CLICK_BLOCK, x + 16, 64, 7, true);
+        interact(world, Action.LEFT_CLICK_BLOCK, x + 16, 64, 7, false);
         command(a, "register");
         var found = storage.loadAll().stream().filter(f -> f.farm().mechanism().min().worldId().equals(world.getUID())
                 && f.farm().mechanism().min().x() == x).toList();

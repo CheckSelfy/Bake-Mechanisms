@@ -148,6 +148,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             profiling.tick();
             emulation.tick();
         }, 1L, 1L);
+        getServer().getScheduler().runTaskTimer(this, marking::refreshActionBars, 20L, 20L);
         getLogger().info("Bake Mechanisms enabled");
     }
 

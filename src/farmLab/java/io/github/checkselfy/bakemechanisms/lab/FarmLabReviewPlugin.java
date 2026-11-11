@@ -171,9 +171,10 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
 
     private void register(FarmLabPlugin.Farm farm) {
         creator.getInventory().clear(); command("wand"); creator.getInventory().setHeldItemSlot(0);
+        // The wand moves on by itself: first corner, second corner, then the output container.
         interact(farm.destination(), Action.LEFT_CLICK_BLOCK, false);
-        interact(farm.maximum(), Action.RIGHT_CLICK_BLOCK, false);
-        interact(farm.output(), Action.RIGHT_CLICK_BLOCK, true);
+        interact(farm.maximum(), Action.LEFT_CLICK_BLOCK, false);
+        interact(farm.output(), Action.LEFT_CLICK_BLOCK, false);
         command("register");
         var saved = storage.loadAll().stream().filter(f -> f.farm().mechanism().min().x() == farm.destination()[0]).findFirst().orElseThrow();
         ids.put(farm.id(), saved.farm().id());
