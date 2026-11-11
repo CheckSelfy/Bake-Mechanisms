@@ -276,14 +276,15 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
 
     public Location location(int[] p) { return new Location(world, p[0], p[1], p[2]); }
 
+    /** The lab is this server's only playable world: a player arriving anywhere else is sent to its centre. */
     @EventHandler public void onJoin(PlayerJoinEvent event) {
-        if (!event.getPlayer().hasPlayedBefore()) {
-            getServer().getScheduler().runTaskLater(this, () -> {
-                if (!event.getPlayer().isOnline()) return;
-                event.getPlayer().teleport(new Location(world, 48.5, 64, 24.5));
-                event.getPlayer().sendMessage("Local farm lab: /farmlab setup, then /farmlab list. No OP required.");
-            }, 5L);
-        }
+        var player = event.getPlayer();
+        if (player.getWorld().equals(world)) return;
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (!player.isOnline() || player.getWorld().equals(world)) return;
+            player.teleport(new Location(world, 48.5, 64, 24.5));
+            player.sendMessage("Local farm lab: /farmlab setup, then /farmlab list. No OP required.");
+        }, 5L);
     }
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {

@@ -167,10 +167,19 @@ tasks.register<Copy>("deploy") {
     into(layout.projectDirectory.dir("server/plugins"))
 }
 
+// The lab builder bundles test-worlds/ppl9 and test-worlds/ppl9-mobs; on first start it builds them into a separate
+// farm_lab world of the local server and sends joining players there. Never install it on a public server.
+tasks.register<Copy>("deployFarmLab") {
+    group = "application"
+    description = "Copies the test-worlds farm builder to the local Paper server."
+    from(tasks.named("farmLabJar"))
+    into(layout.projectDirectory.dir("server/plugins"))
+}
+
 tasks.register<JavaExec>("runServer") {
     group = "application"
-    description = "Deploys the plugin and runs the local Paper server on Java 25."
-    dependsOn("setupServer", "deploy")
+    description = "Deploys the plugin with the test-worlds farm lab and runs the local Paper server on Java 25."
+    dependsOn("setupServer", "deploy", "deployFarmLab")
     workingDir = layout.projectDirectory.dir("server").asFile
     classpath = files(layout.projectDirectory.file("server/paper.jar"))
     javaLauncher.set(javaToolchains.launcherFor {
