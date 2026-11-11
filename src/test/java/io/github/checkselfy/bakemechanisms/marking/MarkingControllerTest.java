@@ -51,6 +51,7 @@ class MarkingControllerTest {
     private final ProfilingService profiling = mock(ProfilingService.class);
     private final java.util.List<MarkingMenu> opened = new java.util.ArrayList<>();
     private int tick;
+    private final java.util.List<Player> farmScreens = new java.util.ArrayList<>();
     private MarkingController controller;
 
     private final JavaPlugin plugin = mock(JavaPlugin.class);
@@ -78,7 +79,7 @@ class MarkingControllerTest {
         when(pdc.get(new NamespacedKey("bakemechanisms", "marking_wand"), PersistentDataType.BYTE))
                 .thenReturn((byte) 1);
         controller = new MarkingController(plugin, registry, outputs, profiling, mock(FarmRemoval.class),
-                (viewer, menu, selection) -> opened.add(menu), Runnable::run);
+                (viewer, menu, selection) -> opened.add(menu), Runnable::run, farmScreens::add);
     }
 
     @Test
@@ -604,6 +605,16 @@ class MarkingControllerTest {
         var captor = org.mockito.ArgumentCaptor.forClass(Component.class);
         verify(player, atLeastOnce()).sendActionBar(captor.capture());
         return PlainTextComponentSerializer.plainText().serialize(captor.getValue());
+    }
+
+    @Test
+    void manageCommandAndMenuButtonOpenTheFarmScreen() {
+        run("manage");
+        assertEquals(java.util.List.of(player), farmScreens);
+        openMenu();
+        press(MarkingMenu.Button.FARMS);
+        assertEquals(2, farmScreens.size());
+        assertTrue(controller.onTabComplete(player, command, "bake", new String[] { "ma" }).contains("manage"));
     }
 
     private void openMenu() {

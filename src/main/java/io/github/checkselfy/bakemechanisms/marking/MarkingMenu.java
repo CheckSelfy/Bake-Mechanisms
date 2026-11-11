@@ -5,25 +5,17 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Material;
 import org.bukkit.Server;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
-import org.bukkit.inventory.ItemStack;
 
 /**
- * The wand's inventory menu. Its items are buttons only: every click and drag on an open menu is cancelled by
- * {@link MarkingController}, which looks the clicked slot up with {@link Button#at(int)}. Server thread only.
+ * The wand's inventory menu. {@link MarkingController} handles its clicks and looks the clicked slot up with
+ * {@link Button#at(int)}. Server thread only.
  */
-public final class MarkingMenu implements InventoryHolder {
+public final class MarkingMenu extends ButtonMenu {
     static final int SIZE = 27;
     static final Component TITLE = Component.text("Разметка фермы");
-    private Inventory inventory;
-    /** Set once a button that closes the menu was pressed, so further clicks before the close do nothing. */
-    private boolean closing;
 
     /** Shows the menu to a player; the Paper implementation is {@link #render}. */
     @FunctionalInterface
@@ -37,7 +29,8 @@ public final class MarkingMenu implements InventoryHolder {
         OUTPUT(12, Material.CHEST, "Назначить выходной контейнер"),
         REGISTER(14, Material.WRITABLE_BOOK, "Зарегистрировать ферму"),
         UNSELECT(15, Material.BARRIER, "Очистить выделение"),
-        HELP(16, Material.BOOK, "Подсказка");
+        HELP(16, Material.BOOK, "Подсказка"),
+        FARMS(22, Material.BOOKSHELF, "Мои фермы");
 
         private final int slot;
         private final Material icon;
@@ -68,36 +61,17 @@ public final class MarkingMenu implements InventoryHolder {
         }
     }
 
-    @Override
-    public Inventory getInventory() {
-        return inventory;
-    }
-
-    boolean closing() {
-        return closing;
-    }
-
-    void close() {
-        closing = true;
-    }
-
     /** Paper implementation of {@link Opener}. */
     static Opener renderer(Server server) {
         return (player, menu, selection) -> {
-            menu.inventory = server.createInventory(menu, SIZE, TITLE);
-            for (var button : Button.values()) menu.inventory.setItem(button.slot, item(button, selection));
-            player.openInventory(menu.inventory);
+            var inventory = server.createInventory(menu, SIZE, TITLE);
+            menu.inventory(inventory);
+            for (var button : Button.values()) {
+                inventory.setItem(button.slot, item(button.icon, button.title, lore(button, selection),
+                        button.mode() != null && button.mode() == selection.mode()));
+            }
+            player.openInventory(inventory);
         };
-    }
-
-    private static ItemStack item(Button button, MarkingSelection selection) {
-        var item = new ItemStack(button.icon);
-        var meta = item.getItemMeta();
-        meta.displayName(plain(button.title, NamedTextColor.GOLD));
-        meta.lore(lore(button, selection).stream().map(line -> plain(line, NamedTextColor.GRAY)).toList());
-        if (button.mode() != null && button.mode() == selection.mode()) meta.setEnchantmentGlintOverride(true);
-        item.setItemMeta(meta);
-        return item;
     }
 
     private static List<String> lore(Button button, MarkingSelection selection) {
@@ -115,14 +89,11 @@ public final class MarkingMenu implements InventoryHolder {
             }
             case UNSELECT -> lore.add("Сбрасывает углы и выходные контейнеры.");
             case HELP -> lore.add("Показывает порядок разметки в чате.");
+            case FARMS -> lore.add("Состояние ваших ферм и действия с ними.");
         }
         if (button.mode() != null) {
             lore.add(button.mode() == selection.mode() ? "Текущий режим." : "Нажмите, затем ЛКМ по блоку.");
         }
         return lore;
-    }
-
-    private static Component plain(String text, NamedTextColor color) {
-        return Component.text(text, color).decoration(TextDecoration.ITALIC, false);
     }
 }

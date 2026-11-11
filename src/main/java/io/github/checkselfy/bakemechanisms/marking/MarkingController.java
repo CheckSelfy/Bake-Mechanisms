@@ -37,7 +37,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
-    private static final List<String> COMMANDS = List.of("wand", "select-output", "unselect", "register", "list",
+    private static final List<String> COMMANDS = List.of("wand", "select-output", "unselect", "register", "list", "manage",
             "info", "rename", "profile", "profile-long", "sprint", "cancel-profiling", "unregister");
     private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "profile-long", "sprint",
             "cancel-profiling", "unregister");
@@ -48,7 +48,7 @@ public final class MarkingController implements Listener, TabExecutor {
     static final Map<String, String> RENAMED = Map.of("output", "select-output", "clear", "unselect",
             "cancel", "cancel-profiling", "restore", "unstasis", "delete", "unregister");
     private static final String FARM_USAGE = FarmArguments.USAGE;
-    private static final String HELP = "ПКМ выделителем — меню разметки. /bake wand | select-output | unselect | register [имя] | list | info "
+    private static final String HELP = "ПКМ выделителем — меню разметки. /bake wand | select-output | unselect | register [имя] | list | manage | info "
             + FARM_USAGE + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | profile-long " + FARM_USAGE + " | sprint " + FARM_USAGE
             + " (ускоряет весь сервер) | cancel-profiling " + FARM_USAGE + " | stasis " + FARM_USAGE + " | unstasis "
             + FARM_USAGE + " | unregister " + FARM_USAGE + " [confirm]";
@@ -68,6 +68,8 @@ public final class MarkingController implements Listener, TabExecutor {
     private final MarkingMenu.Opener menus;
     /** Runs a task on the next server tick: inventories must not be opened or closed inside a click event. */
     private final Consumer<Runnable> nextTick;
+    /** Opens the farm screens; not inside an inventory click. */
+    private final Consumer<Player> openFarms;
     private final Map<UUID, MarkingSelection> selections = new HashMap<>();
     /** The last wand click of each player, to drop the repeated events one physical click can produce. */
     private final Map<UUID, WandClick> lastClicks = new HashMap<>();
@@ -92,14 +94,14 @@ public final class MarkingController implements Listener, TabExecutor {
     private record Notice(Component text, int until) { }
 
     public MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
-                             ProfilingService profiling, FarmRemoval removal) {
+                             ProfilingService profiling, FarmRemoval removal, Consumer<Player> openFarms) {
         this(plugin, registry, outputs, profiling, removal, MarkingMenu.renderer(plugin.getServer()),
-                task -> plugin.getServer().getScheduler().runTask(plugin, task));
+                task -> plugin.getServer().getScheduler().runTask(plugin, task), openFarms);
     }
 
     MarkingController(JavaPlugin plugin, FarmRegistry registry, PaperOutputResolver outputs,
                       ProfilingService profiling, FarmRemoval removal, MarkingMenu.Opener menus,
-                      Consumer<Runnable> nextTick) {
+                      Consumer<Runnable> nextTick, Consumer<Player> openFarms) {
         this.plugin = plugin;
         this.registry = registry;
         this.outputs = outputs;
@@ -107,6 +109,7 @@ public final class MarkingController implements Listener, TabExecutor {
         this.removal = removal;
         this.menus = menus;
         this.nextTick = nextTick;
+        this.openFarms = openFarms;
         this.wandKey = new NamespacedKey(plugin, "marking_wand");
     }
 
@@ -136,6 +139,10 @@ public final class MarkingController implements Listener, TabExecutor {
                 case "register" -> {
                     if (args.length > 2) throw new IllegalArgumentException("/bake register [имя]");
                     register(player, args.length == 2 ? args[1] : null);
+                }
+                case "manage" -> {
+                    requireArguments(args, 1);
+                    openFarms.accept(player);
                 }
                 case "list" -> {
                     requireArguments(args, 1);
@@ -348,6 +355,7 @@ public final class MarkingController implements Listener, TabExecutor {
                     closeMenu(player);
                     player.sendMessage(GUIDE);
                 }
+                case FARMS -> nextTick.accept(() -> openFarms.accept(player));
             }
         } catch (IllegalArgumentException error) {
             failed(player, error.getMessage());
