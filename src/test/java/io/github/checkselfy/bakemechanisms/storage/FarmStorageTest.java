@@ -72,7 +72,7 @@ class FarmStorageTest {
                 State.READY, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
         storage.save(ready);
         storage.saveEmulation(ready.id(), new EmulationState(Map.of(), Map.of(Material.KELP, 3)));
-        var profiling = new MarkedFarm(ready.id(), ready.creatorId(), ready.mechanism(), ready.output(),
+        var profiling = new MarkedFarm(ready.id(), ready.creatorId(), ready.mechanism(), ready.outputs().get(0),
                 State.PROFILING, null);
         storage.save(profiling);
 
@@ -137,14 +137,14 @@ class FarmStorageTest {
                 State.STASIS, new ProductionProfile(Map.of(Material.KELP, 1.0), 3600));
         storage.save(stasis);
         storage.saveEmulation(stasis.id(), new EmulationState(Map.of(), Map.of(Material.KELP, 3)));
-        storage.saveDrain(stasis.id(), Map.of(Material.KELP, 3));
-        var restored = new MarkedFarm(stasis.id(), stasis.creatorId(), stasis.mechanism(), stasis.output(),
+        storage.saveDrain(stasis.id(), List.of(Map.of(Material.KELP, 3)));
+        var restored = new MarkedFarm(stasis.id(), stasis.creatorId(), stasis.mechanism(), stasis.outputs().get(0),
                 State.NEEDS_PROFILING, null);
         storage.save(restored);
 
         var bytes = Files.readAllBytes(root.resolve(stasis.id().toString()).resolve("drain.dat"));
         assertFalse(new String(bytes).contains("kelp 3"), "leftover buffer is binary");
-        assertEquals(List.of(new FarmStorage.StoredFarm(restored, Optional.empty(), Map.of(Material.KELP, 3))),
+        assertEquals(List.of(new FarmStorage.StoredFarm(restored, Optional.empty(), List.of(Map.of(Material.KELP, 3)))),
                 new FarmStorage(root).loadAll());
 
         storage.deleteDrain(stasis.id());
@@ -176,7 +176,7 @@ class FarmStorageTest {
                 State.NEEDS_PROFILING, null);
         storage.save(farm);
         storage.saveEmulation(farm.id(), new EmulationState(Map.of(), Map.of(Material.KELP, 2)));
-        storage.saveDrain(farm.id(), Map.of(Material.KELP, 3));
+        storage.saveDrain(farm.id(), List.of(Map.of(Material.KELP, 3)));
         Files.write(root.resolve(farm.id().toString()).resolve("snapshot.bin"), new byte[] { 1 });
         storage.save(other);
 
@@ -202,6 +202,66 @@ class FarmStorageTest {
         assertTrue(Files.exists(directory.resolve("snapshot.bin")));
         assertTrue(Files.exists(directory.resolve("stasis.yml")));
         assertTrue(Files.exists(directory.resolve("farm.yml")));
+    }
+
+    @Test
+    void namedFarmWithSeveralOutputsKeepsTheirOrderRatesProgressAndLeftovers() {
+        var barrel = new OutputContainer(OutputContainer.Type.BARREL, Set.of(new BlockPosition(WORLD, 12, 60, 0)));
+        var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), "Iron_farm-2", mechanism(),
+                List.of(barrel, chest()), State.STASIS, new ProductionProfile(
+                        List.of(Map.of(Material.IRON_INGOT, 2.5), Map.of(Material.POPPY, 0.125)), 900));
+        var state = new EmulationState(List.of(
+                new EmulationState.OutputState(Map.of(Material.IRON_INGOT, new BigDecimal("0.5")),
+                        Map.of(Material.IRON_INGOT, 4)),
+                new EmulationState.OutputState(Map.of(Material.POPPY, new BigDecimal("0.875")), Map.of())));
+        var storage = new FarmStorage(root);
+        storage.save(farm);
+        storage.saveEmulation(farm.id(), state);
+        storage.saveDrain(farm.id(), List.of(Map.of(), Map.of(Material.POPPY, 2)));
+
+        assertEquals(List.of(new FarmStorage.StoredFarm(farm, Optional.of(state),
+                List.of(Map.of(), Map.of(Material.POPPY, 2)))), new FarmStorage(root).loadAll());
+    }
+
+    @Test
+    void filesOfTheFirstFormatLoadAsAnUnnamedSingleOutputFarm() throws IOException {
+        var id = UUID.randomUUID();
+        var creator = UUID.randomUUID();
+        var dir = Files.createDirectories(root.resolve(id.toString()));
+        Files.writeString(dir.resolve("farm.yml"), String.join("\n",
+                "format: 1", "id: " + id, "creator: " + creator, "state: STASIS", "world: " + WORLD,
+                "mechanism:", "  min: [0, 60, 0]", "  max: [4, 64, 4]",
+                "output:", "  type: CHEST", "  blocks:", "  - [10, 60, 0]",
+                "profile:", "  useful-ticks: 3600", "  rates-per-20-ticks:", "    minecraft:kelp: 0.5", ""));
+        var emulation = new java.io.ByteArrayOutputStream();
+        try (var out = new java.io.DataOutputStream(emulation)) {
+            out.writeInt(0x42414b45); // "BAKE"
+            out.writeInt(1);
+            out.writeInt(1);
+            out.writeUTF("minecraft:kelp");
+            out.writeUTF("0.25");
+            out.writeInt(1);
+            out.writeUTF("minecraft:kelp");
+            out.writeInt(6);
+        }
+        Files.write(dir.resolve("emulation.dat"), emulation.toByteArray());
+        var drain = new java.io.ByteArrayOutputStream();
+        try (var out = new java.io.DataOutputStream(drain)) {
+            out.writeInt(0x4452414e); // "DRAN"
+            out.writeInt(1);
+            out.writeInt(1);
+            out.writeUTF("minecraft:bone");
+            out.writeInt(9);
+        }
+        Files.write(dir.resolve("drain.dat"), drain.toByteArray());
+
+        var farm = new MarkedFarm(id, creator, mechanism(), chest(), State.STASIS,
+                new ProductionProfile(Map.of(Material.KELP, 0.5), 3600));
+        assertEquals(List.of(new FarmStorage.StoredFarm(farm,
+                        Optional.of(new EmulationState(Map.of(Material.KELP, new BigDecimal("0.25")),
+                                Map.of(Material.KELP, 6))),
+                        List.of(Map.of(Material.BONE, 9)))),
+                new FarmStorage(root).loadAll());
     }
 
     private static Cuboid mechanism() {

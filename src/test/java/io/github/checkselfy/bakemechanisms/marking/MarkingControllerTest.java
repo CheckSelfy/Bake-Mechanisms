@@ -78,7 +78,7 @@ class MarkingControllerTest {
         verify(event).setUseInteractedBlock(Event.Result.DENY);
         verify(event).setUseItemInHand(Event.Result.DENY);
         verify(corner, never()).setType(any());
-        run("info", farm.id().toString());
+        run("info", "--id", farm.id().toString());
         verify(player, atLeastOnce()).sendMessage(contains(farm.id().toString()));
         run("register");
         assertEquals(1, registry.findByCreator(creator).size());
@@ -159,11 +159,11 @@ class MarkingControllerTest {
         var farm = registry.findByCreator(creator).getFirst();
         var other = mock(Player.class);
         when(other.getUniqueId()).thenReturn(UUID.randomUUID());
-        controller.onCommand(other, command, "bake", new String[] { "info", farm.id().toString() });
+        controller.onCommand(other, command, "bake", new String[] { "info", "--id", farm.id().toString() });
         verify(other).sendMessage(contains("только её создатель"));
-        assertTrue(controller.onTabComplete(other, command, "bake", new String[] { "info", "" }).isEmpty());
+        assertTrue(controller.onTabComplete(other, command, "bake", new String[] { "info", "--id", "" }).isEmpty());
         assertEquals(java.util.List.of(farm.id().toString()),
-                controller.onTabComplete(player, command, "bake", new String[] { "info", "" }));
+                controller.onTabComplete(player, command, "bake", new String[] { "info", "--id", "" }));
     }
 
     @Test
@@ -172,7 +172,7 @@ class MarkingControllerTest {
         selectOutput(32);
         run("clear");
         run("register");
-        run("info", "invalid");
+        run("info", "--id", "invalid");
         assertTrue(registry.findByCreator(creator).isEmpty());
         verify(player).sendMessage("Укажите UUID фермы из /bake list.");
     }
@@ -187,7 +187,7 @@ class MarkingControllerTest {
         run("register");
         var farm = registry.findByCreator(creator).getFirst();
         assertEquals(new BlockPosition(worldId, 0, 0, 0), farm.mechanism().max());
-        assertEquals(OutputContainer.Type.BARREL, farm.output().type());
+        assertEquals(OutputContainer.Type.BARREL, farm.outputs().get(0).type());
     }
 
     @Test

@@ -63,8 +63,7 @@ public final class StasisService {
         SavedSnapshot snapshot;
         try {
             var data = world.capture(farm);
-            snapshot = new SavedSnapshot(new MarkedFarm(farm.id(), farm.creatorId(), farm.mechanism(),
-                    farm.output(), State.STASIS, farm.profile()), data);
+            snapshot = new SavedSnapshot(farm.with(State.STASIS, farm.profile()), data);
             store.save(snapshot);
         } catch (IOException | IllegalStateException error) {
             throw new IllegalArgumentException("Снимок не сохранён, мир не изменён: " + error.getMessage(), error);

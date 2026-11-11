@@ -77,9 +77,9 @@ public final class ProfilingService {
         }
         var chunks = chunksOf(farm);
         tickets.acquireAll(chunks);
-        OutputSnapshot baseline;
+        List<OutputSnapshot> baseline;
         try {
-            baseline = world.readOutput(farm.output());
+            baseline = readOutputs(farm);
         } catch (IllegalStateException error) {
             chunks.forEach(tickets::release);
             throw new IllegalArgumentException(error.getMessage(), error);
@@ -87,9 +87,23 @@ public final class ProfilingService {
             chunks.forEach(tickets::release);
             throw error;
         }
-        world.lockOutput(farm.output());
+        farm.outputs().forEach(world::lockOutput);
         registry.markProfiling(farm.id());
-        sessions.put(farm.id(), new Session(farm, chunks, new ProfileCalculator(baseline, settings)));
+        var session = new Session(farm, chunks, new ProfileCalculator(baseline, settings));
+        sessions.put(farm.id(), session);
+        if (session.calculator.saturated()) reportFull(session);
+    }
+
+    /**
+     * Server ticks left until the farm's profiling finishes, for speeding the server up to that point.
+     *
+     * @throws IllegalArgumentException when the actor is not the creator or the farm is not being profiled
+     */
+    public long remainingTicks(UUID farmId, UUID actorId) {
+        var farm = registry.requireCreator(farmId, actorId);
+        var session = sessions.get(farm.id());
+        if (session == null) throw new IllegalArgumentException("Ферма сейчас не профилируется.");
+        return ProfilingSettings.DURATION_TICKS - session.elapsed;
     }
 
     /** Farms whose mechanism and output are currently protected. */
@@ -113,11 +127,12 @@ public final class ProfilingService {
             boolean due = last || session.elapsed % settings.snapshotInterval() == 0;
             if (due && !session.calculator.saturated()) {
                 try {
-                    session.calculator.record(session.elapsed, world.readOutput(session.farm.output()));
+                    session.calculator.record(session.elapsed, readOutputs(session.farm));
                 } catch (IllegalStateException error) {
                     abort(session, error.getMessage());
                     continue;
                 }
+                if (session.calculator.saturated()) reportFull(session);
             }
             if (last) finish(session);
         }
@@ -131,23 +146,38 @@ public final class ProfilingService {
         }
     }
 
+    private List<OutputSnapshot> readOutputs(MarkedFarm farm) {
+        return farm.outputs().stream().map(world::readOutput).toList();
+    }
+
+    /** Production after the first full output is not measured; the creator can rearrange the output and retry. */
+    private void reportFull(Session session) {
+        int index = session.calculator.fullOutput();
+        var output = session.farm.outputs().get(index);
+        world.notify(session.farm.creatorId(), "Ферма " + session.farm.title() + ": выходной контейнер №"
+                + (index + 1) + " (" + output.describe() + ") заполнился на тике " + session.elapsed
+                + ". Дальнейшая выработка всех выходных контейнеров в профиль не входит. Чтобы замер был длиннее,"
+                + " разгружайте выходные контейнеры в промежуточный сундук или бочку.");
+    }
+
     private void abort(Session session, String reason) {
         end(session);
         registry.markNeedsProfiling(session.farm.id());
-        world.notify(session.farm.creatorId(), "Профилирование фермы " + session.farm.id() + " прервано: " + reason);
+        world.notify(session.farm.creatorId(), "Профилирование фермы " + session.farm.title() + " прервано: " + reason);
     }
 
     private void finish(Session session) {
         end(session);
         var id = session.farm.id();
+        var label = session.farm.title();
         switch (session.calculator.result()) {
             case ProfileCalculator.Result.Accepted accepted -> {
                 registry.markReady(id, accepted.profile());
-                world.notify(session.farm.creatorId(), "Профилирование фермы " + id + " завершено: READY.");
+                world.notify(session.farm.creatorId(), "Профилирование фермы " + label + " завершено: READY.");
             }
             case ProfileCalculator.Result.Rejected rejected -> {
                 registry.markNeedsProfiling(id);
-                world.notify(session.farm.creatorId(), "Профиль фермы " + id + " отклонён: " + rejected.reason()
+                world.notify(session.farm.creatorId(), "Профиль фермы " + label + " отклонён: " + rejected.reason()
                         + " Состояние: NEEDS_PROFILING.");
             }
         }
@@ -167,7 +197,7 @@ public final class ProfilingService {
                 chunks.add(new ChunkPosition(min.worldId(), x, z));
             }
         }
-        for (var block : farm.output().blocks()) chunks.add(ChunkPosition.of(block));
+        farm.outputBlocks().forEach(block -> chunks.add(ChunkPosition.of(block)));
         return chunks;
     }
 }

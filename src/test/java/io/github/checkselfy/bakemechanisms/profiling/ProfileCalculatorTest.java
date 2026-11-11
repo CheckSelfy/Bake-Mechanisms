@@ -2,6 +2,7 @@ package io.github.checkselfy.bakemechanisms.profiling;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.List;
 import java.util.Map;
 import org.bukkit.Material;
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,32 @@ class ProfileCalculatorTest {
         var exact = new ProfileCalculator(snapshot(Map.of(), false), new ProfilingSettings(20, 600, true));
         exact.record(600, snapshot(Map.of(Material.STRING, 30), false));
         assertEquals(600, accepted(exact.result()).usefulTicks());
+    }
+
+    @Test
+    void eachOutputIsMeasuredSeparatelyOverTheSegmentEndingWhenAnyOutputFills() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(Material.BONE, 2), false),
+                snapshot(Map.of(), false)), DEFAULTS);
+        calculator.record(40, List.of(snapshot(Map.of(Material.BONE, 6), false),
+                snapshot(Map.of(Material.ARROW, 1), false)));
+        assertEquals(-1, calculator.fullOutput());
+        // The second output fills first; the overflow that the first output receives afterwards is not counted.
+        calculator.record(80, List.of(snapshot(Map.of(Material.BONE, 10), false),
+                snapshot(Map.of(Material.ARROW, 2), true)));
+        assertEquals(1, calculator.fullOutput());
+        calculator.record(120, List.of(snapshot(Map.of(Material.BONE, 40), false),
+                snapshot(Map.of(Material.ARROW, 2), true)));
+        var profile = accepted(calculator.result());
+        assertEquals(40, profile.usefulTicks());
+        assertEquals(List.of(Map.of(Material.BONE, 2.0), Map.of(Material.ARROW, 0.5)), profile.outputs());
+    }
+
+    @Test
+    void outputWithoutProductionIsKeptAsEmptyRates() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(), false), snapshot(Map.of(), false)),
+                DEFAULTS);
+        calculator.record(3600, List.of(snapshot(Map.of(), false), snapshot(Map.of(Material.KELP, 180), false)));
+        assertEquals(List.of(Map.of(), Map.of(Material.KELP, 1.0)), accepted(calculator.result()).outputs());
     }
 
     private static OutputSnapshot snapshot(Map<Material, Integer> counts, boolean full) {

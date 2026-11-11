@@ -56,9 +56,11 @@ public final class PaperStasisWorld implements StasisWorld {
         loadChunks(world, region);
         var groups = entities.capture(world, region);
         var voidBlocks = new ArrayList<SnapshotPayload.VoidBlock>();
-        var anchor = farm.output().blocks().iterator().next();
-        if (!resolver.resolve(world.getBlockAt(anchor.x(), anchor.y(), anchor.z())).equals(farm.output())) {
-            throw new IllegalStateException("Выходной контейнер изменился.");
+        for (var output : farm.outputs()) {
+            var anchor = output.blocks().iterator().next();
+            if (!resolver.resolve(world.getBlockAt(anchor.x(), anchor.y(), anchor.z())).equals(output)) {
+                throw new IllegalStateException("Выходной контейнер изменился.");
+            }
         }
         eachBlock(world, region, block -> {
             var state = block.getState();

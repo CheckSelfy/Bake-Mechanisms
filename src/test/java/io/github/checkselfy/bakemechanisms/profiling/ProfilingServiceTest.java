@@ -28,13 +28,13 @@ class ProfilingServiceTest {
     void completedRunStoresProfileAndReleasesAllTickets() {
         // Mechanism spans chunks (0..1, 0); output sits in chunk (3, 0).
         var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(Material.COBBLESTONE, 7), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.COBBLESTONE, 7), false));
         service.start(farm.id(), creator);
 
         assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
         assertEquals(Set.of(chunk(0, 0), chunk(1, 0), chunk(3, 0)), world.tickets);
 
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(Material.COBBLESTONE, 187), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.COBBLESTONE, 187), false));
         tick(ProfilingSettings.DURATION_TICKS - 1);
         assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
         tick(1);
@@ -49,7 +49,7 @@ class ProfilingServiceTest {
     @Test
     void profilingWaitsUntilTheLeftoverBufferIsDelivered() {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         var draining = new HashSet<UUID>(Set.of(farm.id()));
         var guarded = new ProfilingService(registry, world, ProfilingSettings.DEFAULT, new ChunkTickets(world),
                 draining::contains);
@@ -67,7 +67,7 @@ class ProfilingServiceTest {
     @Test
     void creatorCancelReleasesTicketsAndAllowsRestart() {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         var stranger = UUID.randomUUID();
         assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), stranger));
         assertTrue(world.tickets.isEmpty());
@@ -95,14 +95,14 @@ class ProfilingServiceTest {
     void concurrentFarmsKeepSharedOutputChunkLoadedUntilBothFinish() {
         var first = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(80));
         var second = register(new Cuboid(block(32, 0, 0), block(37, 5, 5)), output(82));
-        world.contents.put(first.output(), new OutputSnapshot(Map.of(), false));
-        world.contents.put(second.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(first.outputs().get(0), new OutputSnapshot(Map.of(), false));
+        world.contents.put(second.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(first.id(), creator);
         tick(100);
         service.start(second.id(), creator);
         assertEquals(Set.of(chunk(0, 0), chunk(2, 0), chunk(5, 0)), world.tickets);
 
-        world.contents.put(first.output(), new OutputSnapshot(Map.of(Material.KELP, 360), false));
+        world.contents.put(first.outputs().get(0), new OutputSnapshot(Map.of(Material.KELP, 360), false));
         tick(ProfilingSettings.DURATION_TICKS - 100);
         assertEquals(State.READY, registry.requireCreator(first.id(), creator).state());
         assertEquals(State.PROFILING, registry.requireCreator(second.id(), creator).state());
@@ -120,7 +120,7 @@ class ProfilingServiceTest {
     void startIsRejectedWithoutSideEffectsWhenPlayerInsideOrOutputMissing() {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
         world.occupied.add(farm.mechanism());
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         var inside = assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), creator));
         assertTrue(inside.getMessage().contains("игрок"));
 
@@ -135,7 +135,7 @@ class ProfilingServiceTest {
     @Test
     void outputLostDuringRunAbortsProfiling() {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
         world.contents.clear();
         tick(20);
@@ -147,9 +147,9 @@ class ProfilingServiceTest {
     @Test
     void shutdownCancelsEverySessionAndSaturatedOutputIsNoLongerSampled() {
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(Material.STONE, 64), true));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.STONE, 64), true));
         tick(20);
         int reads = world.reads;
         tick(1000);
@@ -163,9 +163,9 @@ class ProfilingServiceTest {
     void snapshotIntervalIsConfigurableAndRunAlwaysEndsAt3600Ticks() {
         var sparse = new ProfilingService(registry, world, new ProfilingSettings(1000, 600, false));
         var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(Material.SAND, 1), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.SAND, 1), false));
         sparse.start(farm.id(), creator);
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(Material.SAND, 181), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.SAND, 181), false));
         for (int i = 0; i < ProfilingSettings.DURATION_TICKS; i++) sparse.tick();
         assertEquals(1 + 4, world.reads); // baseline + 1000, 2000, 3000, 3600
         assertEquals(new ProductionProfile(Map.of(Material.SAND, 1.0), 3600),
@@ -175,7 +175,7 @@ class ProfilingServiceTest {
     @Test
     void onlyFarmsNeedingProfilingCanStartAndFailedTicketsDoNotLeak() {
         var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(50));
-        world.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         world.failingTicket = chunk(1, 0);
         assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), creator));
         assertTrue(world.tickets.isEmpty());
@@ -186,6 +186,62 @@ class ProfilingServiceTest {
         var ready = assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), creator));
         assertTrue(ready.getMessage().contains("NEEDS_PROFILING"));
         assertTrue(world.tickets.isEmpty());
+    }
+
+    @Test
+    void everyOutputIsProtectedAndMeasuredAndTheCreatorLearnsWhenOneFills() {
+        var first = output(50);
+        var second = output(80); // chunk (5, 0)
+        var farm = registry.register(creator, "Mobs", new Cuboid(block(0, 0, 0), block(5, 5, 5)),
+                List.of(first, second));
+        world.contents.put(first, new OutputSnapshot(Map.of(), false));
+        world.contents.put(second, new OutputSnapshot(Map.of(Material.BONE, 3), false));
+        service.start(farm.id(), creator);
+        assertEquals(List.of(first, second), world.locked);
+        assertEquals(Set.of(chunk(0, 0), chunk(3, 0), chunk(5, 0)), world.tickets);
+
+        world.contents.put(first, new OutputSnapshot(Map.of(Material.ARROW, 10), false));
+        world.contents.put(second, new OutputSnapshot(Map.of(Material.BONE, 23), false));
+        tick(200);
+        world.contents.put(second, new OutputSnapshot(Map.of(Material.BONE, 27), true));
+        tick(20);
+        var messages = world.messages.get(creator);
+        assertEquals(1, messages.size());
+        assertTrue(messages.getFirst().contains("Mobs") && messages.getFirst().contains("№2")
+                && messages.getFirst().contains("220"), messages.getFirst());
+
+        tick(ProfilingSettings.DURATION_TICKS - 220);
+        assertEquals(1, world.messages.get(creator).stream().filter(message -> message.contains("заполнился"))
+                .count(), "reported once");
+        var profile = registry.requireCreator(farm.id(), creator).profile();
+        assertEquals(200, profile.usefulTicks());
+        assertEquals(List.of(Map.of(Material.ARROW, 1.0), Map.of(Material.BONE, 2.0)), profile.outputs());
+    }
+
+    @Test
+    void outputFullBeforeProfilingStartsIsReportedRightAway() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.DIRT, 1728), true));
+        service.start(farm.id(), creator);
+        var messages = world.messages.get(creator);
+        assertEquals(1, messages.size());
+        assertTrue(messages.getFirst().contains("№1") && messages.getFirst().contains("тике 0"), messages.getFirst());
+    }
+
+    @Test
+    void remainingTicksCountDownToTheEndOfProfilingForTheCreatorOnly() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
+        assertThrows(IllegalArgumentException.class, () -> service.remainingTicks(farm.id(), creator),
+                "not profiling yet");
+        service.start(farm.id(), creator);
+        assertEquals(ProfilingSettings.DURATION_TICKS, service.remainingTicks(farm.id(), creator));
+        tick(1000);
+        assertEquals(ProfilingSettings.DURATION_TICKS - 1000, service.remainingTicks(farm.id(), creator));
+        assertThrows(IllegalArgumentException.class, () -> service.remainingTicks(farm.id(), UUID.randomUUID()));
+        tick((int) service.remainingTicks(farm.id(), creator));
+        assertNotEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state(),
+                "sprinting the remaining ticks finishes profiling");
     }
 
     private void tick(int ticks) {
