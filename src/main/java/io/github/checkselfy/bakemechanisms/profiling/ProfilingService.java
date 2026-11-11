@@ -1,6 +1,7 @@
 package io.github.checkselfy.bakemechanisms.profiling;
 
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
+import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.State;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
+import org.bukkit.Material;
 
 /**
  * Runs independent profiling sessions. {@link #tick()} must be called once per server tick;
@@ -41,14 +43,17 @@ public final class ProfilingService {
         final ProfileCalculator calculator;
         final ProfilingIsolation isolation;
         final int durationTicks;
+        final Set<BlockPosition> hoppers;
         long elapsed;
 
-        Session(MarkedFarm farm, Set<ChunkPosition> chunks, ProfileCalculator calculator, int durationTicks) {
+        Session(MarkedFarm farm, Set<ChunkPosition> chunks, ProfileCalculator calculator, int durationTicks,
+                Set<BlockPosition> hoppers) {
             this.farm = farm;
             this.chunks = chunks;
             this.calculator = calculator;
             this.isolation = new ProfilingIsolation(farm);
             this.durationTicks = durationTicks;
+            this.hoppers = Set.copyOf(hoppers);
         }
     }
 
@@ -114,10 +119,13 @@ public final class ProfilingService {
         tickets.acquireAll(chunks);
         List<OutputSnapshot> baseline;
         ProfilingIsolation.Sources sources;
+        Map<Material, Long> hopperBaseline;
         try {
             sources = world.validateIsolation(farm);
             baseline = readOutputs(farm);
+            hopperBaseline = world.readHoppers(sources.hoppers());
             farm.outputs().forEach(world::lockOutput);
+            world.removeLooseItems(farm.mechanism());
         } catch (IllegalStateException error) {
             chunks.forEach(tickets::release);
             throw new IllegalArgumentException(error.getMessage(), error);
@@ -126,7 +134,7 @@ public final class ProfilingService {
             throw error;
         }
         registry.markProfiling(farm.id());
-        var session = new Session(farm, chunks, new ProfileCalculator(baseline, settings), durationTicks);
+        var session = new Session(farm, chunks, new ProfileCalculator(baseline, hopperBaseline, settings), durationTicks, sources.hoppers());
         session.isolation.initialize(sources);
         sessions.put(farm.id(), session);
         progressListener.started(farm, durationTicks);
@@ -173,7 +181,7 @@ public final class ProfilingService {
             boolean due = last || session.elapsed % settings.snapshotInterval() == 0;
             if (due && !session.calculator.saturated()) {
                 try {
-                    session.calculator.record(session.elapsed, readOutputs(session.farm));
+                    session.calculator.record(session.elapsed, readOutputs(session.farm), world.readHoppers(session.hoppers));
                 } catch (IllegalStateException error) {
                     abort(session, error.getMessage());
                     continue;
@@ -203,8 +211,8 @@ public final class ProfilingService {
         var output = session.farm.outputs().get(index);
         world.notify(session.farm.creatorId(), "Ферма " + session.farm.title() + ": выходной контейнер №"
                 + (index + 1) + " (" + output.describe() + ") заполнился на тике " + session.elapsed
-                + ". Дальнейшая выработка всех выходных контейнеров в профиль не входит. Чтобы замер был длиннее,"
-                + " разгружайте выходные контейнеры в промежуточный сундук или бочку.");
+                + ". Дальнейшая выработка всех выходных контейнеров в профиль не входит. Перед повторным замером"
+                + " освободите больше места в выходных контейнерах.");
     }
 
     private void abort(Session session, String reason) {

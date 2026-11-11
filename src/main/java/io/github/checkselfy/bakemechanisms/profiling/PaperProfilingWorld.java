@@ -19,6 +19,9 @@ import org.bukkit.block.DoubleChest;
 import org.bukkit.block.Dispenser;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
 import java.util.HashSet;
+import java.util.Set;
+import java.util.Map;
+import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
 
 /** Paper adapter for {@link ProfilingWorld}. */
 public final class PaperProfilingWorld implements ProfilingWorld {
@@ -36,6 +39,7 @@ public final class PaperProfilingWorld implements ProfilingWorld {
         requireHopperEvents(world);
         var isolation = new ProfilingIsolation(farm);
         var area = isolation.area();
+        var hoppers = new HashSet<BlockPosition>();
         for (long x = area.min().x(); x <= area.max().x(); x++) {
             for (long z = area.min().z(); z <= area.max().z(); z++) {
                 for (int y = Math.max(world.getMinHeight(), area.min().y()); y <= Math.min(world.getMaxHeight() - 1, area.max().y()); y++) {
@@ -65,6 +69,7 @@ public final class PaperProfilingWorld implements ProfilingWorld {
                         }
                     }
                     if (farm.mechanism().contains(position)) {
+                        if (holder instanceof org.bukkit.block.Hopper) hoppers.add(position);
                         if (holder instanceof org.bukkit.loot.Lootable lootable && lootable.getLootTable() != null) {
                             throw new IllegalStateException("Откройте и опустошите внутренний контейнер с добычей перед профилированием.");
                         }
@@ -96,7 +101,32 @@ public final class PaperProfilingWorld implements ProfilingWorld {
                 }
             }
         }
-        return new ProfilingIsolation.Sources(actors, equipment);
+        return new ProfilingIsolation.Sources(actors, equipment, hoppers);
+    }
+
+    @Override public Map<Material, Long> readHoppers(Set<BlockPosition> hoppers) {
+        var counts = new HashMap<Material, Long>();
+        for (var position : hoppers) {
+            var world = plugin.getServer().getWorld(position.worldId());
+            if (world == null || !(world.getBlockAt(position.x(), position.y(), position.z()).getState(false)
+                    instanceof org.bukkit.block.Hopper hopper)) {
+                throw new IllegalStateException("Внутренняя воронка потеряна или заменена: " + position + ".");
+            }
+            for (var item : hopper.getInventory().getStorageContents()) {
+                if (item != null && !item.isEmpty()) counts.merge(item.getType(), (long) item.getAmount(), Long::sum);
+            }
+        }
+        return Map.copyOf(counts);
+    }
+
+    @Override public void removeLooseItems(Cuboid mechanism) {
+        var world = plugin.getServer().getWorld(mechanism.min().worldId());
+        if (world == null) throw new IllegalStateException("Мир фермы не загружен.");
+        for (var entity : world.getNearbyEntities(box(mechanism))) {
+            var location = entity.getLocation();
+            if (entity instanceof org.bukkit.entity.Item && mechanism.contains(new BlockPosition(world.getUID(),
+                    location.getBlockX(), location.getBlockY(), location.getBlockZ()))) entity.remove();
+        }
     }
 
     private void requireHopperEvents(World world) {

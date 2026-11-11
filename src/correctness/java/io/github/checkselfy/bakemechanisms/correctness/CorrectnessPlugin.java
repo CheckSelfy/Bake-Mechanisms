@@ -371,7 +371,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
 
     private void observeFirstProduction(UUID id, World world, Material baselineType) {
         if (firstProduction.containsKey(id)) return;
-        var current = counts(world);
+        var current = profilingCounts(world);
         if (current.entrySet().stream().anyMatch(entry -> entry.getValue()
                 > (entry.getKey() == baselineType ? 10 : 0))) {
             firstProduction.put(id, Map.copyOf(current));
@@ -383,7 +383,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
         var profile = farm(id).farm().profile();
         check(firstProduction.containsKey(id), "no first production snapshot");
         check(profile.usefulTicks() == 3600 - firstProductionTick.get(id), "profile useful duration");
-        var totals = counts(world);
+        var totals = profilingCounts(world);
         firstProduction.get(id).forEach((type, count) -> totals.merge(type, -count, Integer::sum));
         for (var entry : totals.entrySet()) {
             if (entry.getValue() == 0) continue;
@@ -436,6 +436,17 @@ public final class CorrectnessPlugin extends JavaPlugin {
         var counts = new EnumMap<Material, Integer>(Material.class);
         for (var item : output(world).getContents()) if (item != null) counts.merge(item.getType(), item.getAmount(), Integer::sum);
         return counts;
+    }
+    /** Independent observation of the measured stock; emulation accounting still reads only the output. */
+    private Map<Material, Integer> profilingCounts(World world) {
+        var total = counts(world);
+        for (int x=0;x<16;x++) for(int y=63;y<=70;y++) for(int z=0;z<16;z++) {
+            if (world.getBlockAt(x,y,z).getState(false) instanceof org.bukkit.block.Hopper hopper) {
+                for (var item : hopper.getInventory().getStorageContents())
+                    if (item != null && !item.isEmpty()) total.merge(item.getType(),item.getAmount(),Integer::sum);
+            }
+        }
+        return total;
     }
     private World world(UUID id) { return id.equals(blockFarm) ? blocks : entities; }
     private FarmStorage.StoredFarm farm(UUID id) { return storage.loadAll().stream().filter(f -> f.farm().id().equals(id)).findFirst().orElseThrow(); }

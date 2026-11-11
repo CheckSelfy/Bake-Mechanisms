@@ -95,11 +95,16 @@ final class ProfilingInputCheck extends BukkitRunnable {
         var initial = world.dropItem(new Location(world,517.5,302.05,2.5),new ItemStack(Material.SUGAR_CANE,64));
         initial.setVelocity(new Vector());
         initial.setGravity(false); initial.setUnlimitedLifetime(true);
-        unknown.add(initial); // Initial loose loot is allowed, but never trusted as fresh production.
+        var outsideInitial = world.dropItem(new Location(world,518.05,304.05,2.5),new ItemStack(Material.DIAMOND,64));
+        outsideInitial.setVelocity(new Vector()); outsideInitial.setGravity(false); outsideInitial.setUnlimitedLifetime(true);
+        unknown.add(outsideInitial); // Outside the mechanism must not be deleted, even within the protection belt.
         require(world.getPluginChunkTickets().getOrDefault(plugin,List.of()).isEmpty(),"Rejected startup leaked tickets");
 
         contents(518,301,2).setItem(0,new ItemStack(Material.DIAMOND,32)); // Baseline must not become production.
+        for (int slot=0;slot<5;slot++) contents(517,301,2).setItem(slot,new ItemStack(Material.SUGAR_CANE,64));
         service.start(farm.id(),creator);
+        require(!initial.isValid(),"Initial loose items inside the mechanism were not deleted");
+        require(outsideInitial.isValid(),"Startup deleted loose items outside the mechanism");
         // Enable a returning outside chain after validation; these are real native transfer attempts.
         hopper(518,302,2,BlockFace.DOWN,true);
         hopper(519,302,2,BlockFace.WEST,true);
@@ -154,6 +159,7 @@ final class ProfilingInputCheck extends BukkitRunnable {
             var rates=done.profile().ratesPer20Ticks();
             require(rates.keySet().equals(Set.of(Material.SUGAR_CANE)),"Injected material entered production profile: "+rates);
             require(rates.get(Material.SUGAR_CANE)>0 && rates.get(Material.SUGAR_CANE)<=1.05,"Injected cane inflated the measured rate: "+rates);
+            require(count(517,301,2,Material.SUGAR_CANE)>0,"Fixture must retain some stock to verify hopper + output accounting");
             require(count(518,302,2,Material.DIAMOND)==64,"Adjacent hopper injected items");
             require(count(520,302,2,Material.DIAMOND)==64 && contents(519,302,2).isEmpty(),"Outside chain entered the protected belt");
             for(var item:unknown) require(item.isValid() && item.getItemStack().getAmount()==64,"Unknown items were picked up or merged");
