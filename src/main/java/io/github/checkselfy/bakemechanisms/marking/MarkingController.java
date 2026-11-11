@@ -82,6 +82,11 @@ public final class MarkingController implements Listener, TabExecutor {
     static final int REPEAT_TICKS = 6;
     /** How long the result of a step stays in the action bar before the current status replaces it. */
     static final int NOTICE_TICKS = 60;
+    /**
+     * Longest action-bar line, in characters. The bar is not wrapped: at GUI scale 4 on a 1920-pixel-wide screen
+     * about 80 characters fit, so lines are kept well under that.
+     */
+    static final int ACTION_BAR_LIMIT = 64;
     private final Map<UUID, Notice> notices = new HashMap<>();
 
     private record Notice(Component text, int until) { }
@@ -359,14 +364,10 @@ public final class MarkingController implements Listener, TabExecutor {
         notice(player, "✔ Выделение очищено → ЛКМ по блоку: первый угол", NamedTextColor.GREEN);
     }
 
-    private void succeeded(Player player, String message) {
-        player.sendMessage(message);
-        notice(player, "✔ " + message + " → " + selection(player).hint(), NamedTextColor.GREEN);
-    }
-
     private void failed(Player player, String message) {
         player.sendMessage(message);
-        notice(player, "✖ " + message, NamedTextColor.RED);
+        var line = "✖ " + message;
+        notice(player, line.length() <= ACTION_BAR_LIMIT ? line : "✖ Отказ, причина в чате", NamedTextColor.RED);
     }
 
     /** Shows the result of a step in the action bar; {@link #refreshActionBars} keeps it there for a while. */
@@ -408,7 +409,9 @@ public final class MarkingController implements Listener, TabExecutor {
             throw new IllegalArgumentException("Углы должны находиться в одном мире. Сброс: /bake unselect.");
         }
         selections.put(player.getUniqueId(), old.withCorner(mode, block).advanced());
-        succeeded(player, capitalized(mode.label()) + ": " + coordinates(block));
+        player.sendMessage(capitalized(mode.label()) + ": " + coordinates(block));
+        notice(player, "✔ Угол " + (mode == MarkingSelection.Mode.FIRST_CORNER ? 1 : 2) + ": " + coordinates(block)
+                + " → " + selection(player).hint(), NamedTextColor.GREEN);
     }
 
     private static String capitalized(String text) {
@@ -426,7 +429,7 @@ public final class MarkingController implements Listener, TabExecutor {
         player.sendMessage((removed ? "Выходной контейнер убран из выделения: " : "Выходной контейнер добавлен: ")
                 + output.type() + ", блоков: " + output.blocks().size() + ". Выбрано выходных контейнеров: " + selected.size()
                 + ". Повторный выбор контейнера убирает его.");
-        notice(player, "✔ Выходной контейнер " + (removed ? "убран" : "добавлен") + " (" + selected.size() + ") → "
+        notice(player, "✔ Контейнер " + (removed ? "убран" : "добавлен") + " (" + selected.size() + ") → "
                 + selection(player).hint(), NamedTextColor.GREEN);
     }
 
@@ -461,8 +464,7 @@ public final class MarkingController implements Listener, TabExecutor {
         }
         var farm = registry.register(player.getUniqueId(), name, mechanism, current);
         selections.remove(player.getUniqueId());
-        notice(player, "✔ Ферма зарегистрирована: " + farm.title() + " → /bake profile " + farm.reference(),
-                NamedTextColor.GREEN);
+        notice(player, "✔ Ферма зарегистрирована. Дальше: /bake profile (см. чат)", NamedTextColor.GREEN);
         player.sendMessage("Ферма зарегистрирована" + (name == null
                 ? " без имени: указывайте её как " + farm.reference() + " или задайте имя через /bake rename."
                 : " как " + name + "."));

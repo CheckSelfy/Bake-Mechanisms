@@ -536,11 +536,10 @@ class MarkingControllerTest {
     @Test
     void actionBarShowsTheStepJustDoneAndWhatComesNext() {
         click(Action.LEFT_CLICK_BLOCK, block(0, 0));
-        assertTrue(lastActionBar().contains("Первый угол: 0, 0, 0"), lastActionBar());
-        assertTrue(lastActionBar().contains("ЛКМ по блоку: второй угол"), lastActionBar());
+        assertEquals("✔ Угол 1: 0, 0, 0 → ЛКМ: второй угол", lastActionBar());
         openMenu();
         press(MarkingMenu.Button.REGISTER);
-        assertTrue(lastActionBar().contains("Выберите оба угла"), lastActionBar());
+        assertTrue(lastActionBar().startsWith("✖"), lastActionBar());
     }
 
     @Test
@@ -549,13 +548,12 @@ class MarkingControllerTest {
         click(Action.LEFT_CLICK_BLOCK, block(0, 0));
         tick += MarkingController.NOTICE_TICKS;
         controller.refreshActionBars();
-        assertEquals("ЛКМ по блоку: второй угол | 1: 0, 0, 0 | 2: — | выходных контейнеров: 0 | не хватает: второго угла,"
-                + " выходного контейнера", lastActionBar());
+        assertEquals("ЛКМ: второй угол | углов 1/2, контейнеров 0", lastActionBar());
         click(Action.LEFT_CLICK_BLOCK, block(0, 5));
         click(Action.LEFT_CLICK_BLOCK, output(1));
         tick += MarkingController.NOTICE_TICKS;
         controller.refreshActionBars();
-        assertTrue(lastActionBar().endsWith("выходных контейнеров: 1 | ПКМ → «Зарегистрировать ферму»"), lastActionBar());
+        assertEquals("Всё выбрано | ПКМ → «Зарегистрировать ферму»", lastActionBar());
         openMenu();
         press(MarkingMenu.Button.REGISTER);
         assertTrue(lastActionBar().contains("Ферма зарегистрирована"), lastActionBar());
@@ -568,6 +566,31 @@ class MarkingControllerTest {
         doReturn(java.util.List.of(player)).when(server).getOnlinePlayers();
         controller.refreshActionBars();
         verify(player, never()).sendActionBar(any(Component.class));
+    }
+
+    @Test
+    void everyActionBarLineFitsOnScreenEvenWithExtremeCoordinatesAndLongErrors() {
+        holdWand();
+        openMenu();
+        press(MarkingMenu.Button.REGISTER);
+        assertTrue(lastActionBar().contains("чат"), "a long error points to chat: " + lastActionBar());
+        var far = block(-29_999_999, 319);
+        when(far.getZ()).thenReturn(-29_999_999);
+        click(Action.LEFT_CLICK_BLOCK, far);
+        tick += MarkingController.NOTICE_TICKS;
+        controller.refreshActionBars();
+        click(Action.LEFT_CLICK_BLOCK, block(-29_999_998, 318));
+        openMenu();
+        press(MarkingMenu.Button.OUTPUT);
+        click(Action.LEFT_CLICK_BLOCK, output(1));
+        tick += MarkingController.NOTICE_TICKS;
+        controller.refreshActionBars();
+        var captor = org.mockito.ArgumentCaptor.forClass(Component.class);
+        verify(player, atLeastOnce()).sendActionBar(captor.capture());
+        for (var line : captor.getAllValues()) {
+            var text = PlainTextComponentSerializer.plainText().serialize(line);
+            assertTrue(text.length() <= MarkingController.ACTION_BAR_LIMIT, text.length() + ": " + text);
+        }
     }
 
     private void holdWand() {

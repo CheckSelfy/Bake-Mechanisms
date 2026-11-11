@@ -66,20 +66,19 @@ record MarkingSelection(BlockPosition first, BlockPosition second, List<Selected
         return missing;
     }
 
-    /** The next expected action. */
-    String nextStep() {
-        return complete() ? REGISTER_HINT : "не хватает: " + String.join(", ", missing());
-    }
-
     /** What to do next, after a step succeeded. */
     String hint() {
-        return complete() ? REGISTER_HINT : "ЛКМ по блоку: " + mode.label();
+        return complete() ? REGISTER_HINT : "ЛКМ: " + mode.label();
     }
 
-    /** One action-bar line: current mode, chosen data and the next step. */
+    /**
+     * One short action-bar line: the mode and how much is chosen, or the next step when everything is. Coordinates
+     * are in the step notices, the menu and chat: with them the line would not fit on screen.
+     */
     String status() {
-        return "ЛКМ по блоку: " + mode.label() + " | 1: " + coordinates(first) + " | 2: " + coordinates(second)
-                +  " | выходных контейнеров: " + outputs.size() + " | " + nextStep();
+        if (complete()) return "Всё выбрано | " + REGISTER_HINT;
+        int corners = (first == null ? 0 : 1) + (second == null ? 0 : 1);
+        return "ЛКМ: " + mode.label() + " | углов " + corners + "/2, контейнеров " + outputs.size();
     }
 
     static String coordinates(BlockPosition block) {
