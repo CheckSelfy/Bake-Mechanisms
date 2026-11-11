@@ -9,10 +9,12 @@ import org.bukkit.Material;
 
 /**
  * Turns output snapshots of one profiling run into a production profile. Every output container is measured
- * separately, over one common useful segment. The segment starts at the first snapshot in which any output holds
- * more items than at the start of profiling, so time while the farm was still switched off is not counted. It
+ * separately, over one common useful segment. The segment starts at the first snapshot in which the combined
+ * hopper/output stock has grown relative to startup, so time while the farm was still switched off is not counted. It
  * ends at the last snapshot before any output fills up: after that, a farm may overflow into the other outputs,
- * and their contents no longer reflect the production rate.
+ * and their contents no longer reflect the production rate. Initial hopper stock may move freely without creating
+ * production. Net stock growth also includes new items still queued in hoppers. Ambiguous routing of a shared
+ * hopper material to multiple outputs is rejected instead of guessing a production split.
  */
 public final class ProfileCalculator {
     public sealed interface Result {
@@ -22,6 +24,9 @@ public final class ProfileCalculator {
 
     private final List<OutputSnapshot> baseline;
     private final ProfilingSettings settings;
+    private final Map<Material, Long> baselineHoppers;
+    private Map<Material, Long> firstHoppers;
+    private Map<Material, Long> lastHoppers;
     /** Contents when the first items appeared; null while the farm has produced nothing. */
     private List<OutputSnapshot> first;
     private long firstTick;
@@ -35,9 +40,14 @@ public final class ProfileCalculator {
 
     /** @param baseline contents of every output container, in the farm's output order */
     public ProfileCalculator(List<OutputSnapshot> baseline, ProfilingSettings settings) {
+        this(baseline, Map.of(), settings);
+    }
+
+    public ProfileCalculator(List<OutputSnapshot> baseline, Map<Material, Long> hoppers, ProfilingSettings settings) {
         this.baseline = List.copyOf(Objects.requireNonNull(baseline, "baseline"));
         if (this.baseline.isEmpty()) throw new IllegalArgumentException("Нет выходных контейнеров.");
         this.settings = Objects.requireNonNull(settings, "settings");
+        this.baselineHoppers = Map.copyOf(hoppers);
         this.fullOutput = firstFull(this.baseline);
     }
 
@@ -57,6 +67,10 @@ public final class ProfileCalculator {
 
     /** @param snapshots contents of every output container, in the same order as the baseline */
     public void record(long elapsedTicks, List<OutputSnapshot> snapshots) {
+        record(elapsedTicks, snapshots, Map.of());
+    }
+
+    public void record(long elapsedTicks, List<OutputSnapshot> snapshots, Map<Material, Long> hoppers) {
         if (snapshots.size() != baseline.size()) {
             throw new IllegalArgumentException("Ожидается " + baseline.size() + " снимков выходов.");
         }
@@ -64,25 +78,60 @@ public final class ProfileCalculator {
         fullOutput = firstFull(snapshots);
         if (saturated()) return;
         if (first == null) {
-            if (rates(baseline, snapshots, 1).stream().allMatch(Map::isEmpty)) return;
+            var initial = totals(baseline, baselineHoppers);
+            if (totals(snapshots, hoppers).entrySet().stream()
+                    .noneMatch(entry -> entry.getValue() > initial.getOrDefault(entry.getKey(), 0L))) return;
             first = List.copyOf(snapshots);
+            firstHoppers = Map.copyOf(hoppers);
             firstTick = elapsedTicks;
         }
         lastUseful = List.copyOf(snapshots);
+        lastHoppers = Map.copyOf(hoppers);
         lastUsefulTick = elapsedTicks;
     }
 
     public Result result() {
         if (first == null) {
-            return new Result.Rejected("За время профилирования до заполнения выходного контейнера не появилось"
-                    + " ни одного предмета.");
+            return new Result.Rejected("За время профилирования до заполнения выходного контейнера не произведено"
+                    + " ни одного предмета сверх начального суммарного запаса воронок и выходов.");
         }
         long usefulTicks = lastUsefulTick - firstTick;
         if (usefulTicks == 0) {
             return new Result.Rejected("После появления первых предметов не удалось измерить ни одного интервала"
                     + " производства до заполнения выходного контейнера или конца профилирования.");
         }
-        var outputs = rates(first, lastUseful, usefulTicks);
+        var outputs = new ArrayList<Map<Material, Double>>();
+        for (int i = 0; i < baseline.size(); i++) outputs.add(new HashMap<>());
+        var initial = totals(baseline, baselineHoppers);
+        var from = totals(first, firstHoppers);
+        var to = totals(lastUseful, lastHoppers);
+        for (var entry : to.entrySet()) {
+            var type = entry.getKey();
+            // Never count movement of initial stock, even if it left the measured inventories temporarily.
+            long produced = Math.min(entry.getValue() - from.getOrDefault(type, 0L),
+                    entry.getValue() - initial.getOrDefault(type, 0L));
+            if (produced <= 0) continue;
+            if (outputs.size() == 1) {
+                outputs.getFirst().put(type, produced * 20.0 / usefulTicks);
+                continue;
+            }
+            var destinations = new ArrayList<Integer>();
+            long weight = 0;
+            for (int i = 0; i < outputs.size(); i++) {
+                long gain = Math.max(0L, (long) lastUseful.get(i).count(type) - first.get(i).count(type));
+                if (gain > 0) { destinations.add(i); weight += gain; }
+            }
+            boolean hopperStock = baselineHoppers.getOrDefault(type, 0L) > 0
+                    || firstHoppers.getOrDefault(type, 0L) > 0 || lastHoppers.getOrDefault(type, 0L) > 0;
+            if (destinations.isEmpty() || destinations.size() > 1 && hopperStock) {
+                return new Result.Rejected("Нельзя однозначно распределить прирост " + type
+                        + " между выходными контейнерами с учётом запаса воронок. Разделите выходы по типам продукции.");
+            }
+            for (int index : destinations) {
+                long gain = (long) lastUseful.get(index).count(type) - first.get(index).count(type);
+                outputs.get(index).put(type, produced * 20.0 / usefulTicks * gain / weight);
+            }
+        }
         if (outputs.stream().allMatch(Map::isEmpty)) {
             return new Result.Rejected("За полезный участок (" + usefulTicks
                     + " тиков) не произведено ни одного предмета.");
@@ -95,19 +144,10 @@ public final class ProfileCalculator {
         return new Result.Accepted(new ProductionProfile(outputs, usefulTicks));
     }
 
-    /** Items per 20 ticks gained by every output between two snapshots taken {@code ticks} apart. */
-    private static List<Map<Material, Double>> rates(List<OutputSnapshot> from, List<OutputSnapshot> to,
-                                                     long ticks) {
-        var outputs = new ArrayList<Map<Material, Double>>();
-        for (int i = 0; i < from.size(); i++) {
-            var rates = new HashMap<Material, Double>();
-            for (var entry : to.get(i).counts().entrySet()) {
-                int produced = entry.getValue() - from.get(i).count(entry.getKey());
-                if (produced > 0) rates.put(entry.getKey(), produced * 20.0 / ticks);
-            }
-            outputs.add(rates);
-        }
-        return outputs;
+    private static Map<Material, Long> totals(List<OutputSnapshot> outputs, Map<Material, Long> hoppers) {
+        var total = new HashMap<>(hoppers);
+        for (var output : outputs) output.counts().forEach((type, amount) -> total.merge(type, (long) amount, Long::sum));
+        return total;
     }
 
     private static int firstFull(List<OutputSnapshot> snapshots) {

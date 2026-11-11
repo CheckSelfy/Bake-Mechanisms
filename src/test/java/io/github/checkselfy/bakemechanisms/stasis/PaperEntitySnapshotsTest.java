@@ -30,7 +30,8 @@ class PaperEntitySnapshotsTest {
         }
         assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.ENDER_DRAGON));
         assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.PLAYER));
-        assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.ARROW));
+        assertTrue(PaperEntitySnapshots.supportedTypes().contains(EntityType.ARROW));
+        assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.SNOWBALL));
     }
     private final World world = mock(World.class);
     private final Server server = mock(Server.class);
@@ -68,7 +69,7 @@ class PaperEntitySnapshotsTest {
 
     @Test void unsupportedPassengerAndPlayerAreRejectedBeforeAnySerialization() {
         var root = entity(EntityType.MINECART);
-        var unsupported = entity(EntityType.ARROW);
+        var unsupported = entity(EntityType.SNOWBALL);
         when(root.getPassengers()).thenReturn(List.of(unsupported));
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(root));
         assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));

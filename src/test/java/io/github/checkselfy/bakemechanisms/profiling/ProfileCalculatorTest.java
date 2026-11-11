@@ -11,6 +11,52 @@ class ProfileCalculatorTest {
     private static final ProfilingSettings DEFAULTS = ProfilingSettings.DEFAULT;
 
     @Test
+    void movingInitialHopperStockIntoOutputNeverCreatesProduction() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(Material.SUGAR_CANE,10),false)),
+                Map.of(Material.SUGAR_CANE,320L),DEFAULTS);
+        calculator.record(20,List.of(snapshot(Map.of(Material.SUGAR_CANE,74),false)),Map.of(Material.SUGAR_CANE,256L));
+        calculator.record(3600,List.of(snapshot(Map.of(Material.SUGAR_CANE,330),false)),Map.of());
+        assertInstanceOf(ProfileCalculator.Result.Rejected.class,calculator.result());
+    }
+
+    @Test
+    void newItemsRemainingInHoppersContributeToTheSameNetStock() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(Material.SUGAR_CANE,10),false)),
+                Map.of(Material.SUGAR_CANE,20L),DEFAULTS);
+        calculator.record(20,List.of(snapshot(Map.of(Material.SUGAR_CANE,15),false)),Map.of(Material.SUGAR_CANE,16L));
+        calculator.record(220,List.of(snapshot(Map.of(Material.SUGAR_CANE,33),false)),Map.of(Material.SUGAR_CANE,18L));
+        assertEquals(Map.of(Material.SUGAR_CANE,2.0),accepted(calculator.result()).ratesPer20Ticks()); // (51 - 31) / 200 * 20
+    }
+
+    @Test
+    void initialStockReturningAfterATemporaryDeficitCannotInflateTheProfile() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(),false)),Map.of(Material.SUGAR_CANE,320L),DEFAULTS);
+        calculator.record(20,List.of(snapshot(Map.of(Material.DIAMOND,1),false)),Map.of()); // Old stock temporarily elsewhere.
+        calculator.record(220,List.of(snapshot(Map.of(Material.SUGAR_CANE,320,Material.DIAMOND,11),false)),Map.of());
+        assertEquals(Map.of(Material.DIAMOND,1.0),accepted(calculator.result()).ratesPer20Ticks());
+    }
+
+    @Test
+    void sharedHopperStockWithIndistinguishableOutputDestinationsIsRejected() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(),false),snapshot(Map.of(),false)),
+                Map.of(Material.SUGAR_CANE,64L),DEFAULTS);
+        calculator.record(20,List.of(snapshot(Map.of(Material.SUGAR_CANE,1),false),snapshot(Map.of(),false)),Map.of(Material.SUGAR_CANE,64L));
+        calculator.record(220,List.of(snapshot(Map.of(Material.SUGAR_CANE,6),false),snapshot(Map.of(Material.SUGAR_CANE,5),false)),Map.of(Material.SUGAR_CANE,64L));
+        assertTrue(assertInstanceOf(ProfileCalculator.Result.Rejected.class,calculator.result()).reason().contains("однозначно"));
+    }
+
+    @Test
+    void differentProductsWithHopperStockRemainAssignableToTheirOwnOutputs() {
+        var calculator = new ProfileCalculator(List.of(snapshot(Map.of(Material.BONE,10),false),snapshot(Map.of(Material.ARROW,20),false)),
+                Map.of(Material.BONE,64L,Material.ARROW,128L),DEFAULTS);
+        calculator.record(20,List.of(snapshot(Map.of(Material.BONE,11),false),snapshot(Map.of(Material.ARROW,21),false)),
+                Map.of(Material.BONE,64L,Material.ARROW,128L));
+        calculator.record(220,List.of(snapshot(Map.of(Material.BONE,80),false),snapshot(Map.of(Material.ARROW,160),false)),
+                Map.of(Material.BONE,15L,Material.ARROW,29L));
+        assertEquals(List.of(Map.of(Material.BONE,2.0),Map.of(Material.ARROW,4.0)),accepted(calculator.result()).outputs());
+    }
+
+    @Test
     void farmSwitchedOnLateIsMeasuredFromItsFirstItemNotFromTheStartOfProfiling() {
         var calculator = new ProfileCalculator(snapshot(Map.of(), false), DEFAULTS);
         for (int tick = 20; tick <= 1000; tick += 20) calculator.record(tick, snapshot(Map.of(), false));

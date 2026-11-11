@@ -29,7 +29,7 @@ public final class PaperEntitySnapshots {
     private static final Set<EntityType> SUPPORTED = Set.of(
             EntityType.COW, EntityType.ZOMBIE, EntityType.VILLAGER, EntityType.IRON_GOLEM,
             EntityType.ARMOR_STAND, EntityType.MINECART, EntityType.CHEST_MINECART, EntityType.HOPPER_MINECART,
-            EntityType.ITEM, EntityType.BEE, EntityType.ALLAY, EntityType.ARMADILLO,
+            EntityType.ITEM, EntityType.ARROW, EntityType.BEE, EntityType.ALLAY, EntityType.ARMADILLO,
             EntityType.AXOLOTL, EntityType.BAT, EntityType.BLAZE, EntityType.BOGGED,
             EntityType.BREEZE, EntityType.CAMEL, EntityType.CAMEL_HUSK, EntityType.CAT,
             EntityType.CAVE_SPIDER, EntityType.CHICKEN, EntityType.COD, EntityType.COPPER_GOLEM,
