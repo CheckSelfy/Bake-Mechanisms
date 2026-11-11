@@ -1,5 +1,7 @@
 import java.io.IOException
+import java.io.RandomAccessFile
 import java.net.URI
+import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
@@ -174,6 +176,40 @@ tasks.register<Copy>("deployFarmLab") {
     description = "Copies the test-worlds farm builder to the local Paper server."
     from(tasks.named("farmLabJar"))
     into(layout.projectDirectory.dir("server/plugins"))
+}
+
+tasks.register("resetFarmLab") {
+    group = "application"
+    description = "Deletes the local server's farm_lab world and the Bake Mechanisms data that referred to it; " +
+        "the next runServer rebuilds the lab from test-worlds."
+    val serverDir = layout.projectDirectory.dir("server").asFile
+    doLast {
+        val lock = serverDir.resolve("world/session.lock")
+        if (lock.exists()) {
+            RandomAccessFile(lock, "rw").use { file ->
+                val held = try { file.channel.tryLock() } catch (e: OverlappingFileLockException) { null }
+                    ?: throw GradleException("The local server is running. Type stop in its console, then retry.")
+                held.release()
+            }
+        }
+        val labData = serverDir.resolve("plugins/BakeFarmLab")
+        val labWorld = labData.resolve("world-uid.txt").takeIf { it.isFile }?.readText()?.trim()
+        val farms = serverDir.resolve("plugins/BakeMechanisms/farms")
+        farms.listFiles { file -> file.isDirectory }.orEmpty().forEach { farm ->
+            val world = farm.resolve("farm.yml").takeIf { it.isFile }?.readLines()
+                ?.firstOrNull { it.startsWith("world:") }?.substringAfter(":")?.trim()?.trim('\'', '"')
+            // Without a recorded lab world, every registration is treated as the lab's: this is a local test server.
+            if (labWorld == null || world == null || world == labWorld) {
+                logger.lifecycle("Deleting farm registration ${farm.name} (world $world).")
+                farm.deleteRecursively()
+            }
+        }
+        // Departure positions of players; recreated on the next logout.
+        serverDir.resolve("plugins/BakeMechanisms/offline-players.dat").delete()
+        serverDir.resolve("world/dimensions/minecraft/farm_lab").deleteRecursively()
+        labData.deleteRecursively()
+        logger.lifecycle("Farm lab reset; runServer will rebuild it from test-worlds.")
+    }
 }
 
 tasks.register<JavaExec>("runServer") {

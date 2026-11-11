@@ -72,6 +72,9 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                         }
                     }).createWorld();
             Objects.requireNonNull(world);
+            // Lets resetFarmLab find the Bake Mechanisms registrations that belong to this world.
+            Files.createDirectories(getDataFolder().toPath());
+            Files.writeString(getDataFolder().toPath().resolve("world-uid.txt"), world.getUID() + "\n");
             world.setGameRule(GameRules.ADVANCE_TIME, false);
             world.setGameRule(GameRules.ADVANCE_WEATHER, false);
             world.setGameRule(GameRules.SPAWN_MOBS, false);
