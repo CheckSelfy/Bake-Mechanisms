@@ -69,14 +69,23 @@ class FarmScreensTest {
         registry.markStasis(ready(farm(creator, "Stasis", 3)).id());
         screens.openList(player);
 
-        assertActions("Needs", Material.CLOCK, Material.LAVA_BUCKET);
-        assertActions("Profiling", null, null);
-        assertActions("Ready", Material.BLUE_ICE, Material.LAVA_BUCKET);
-        assertActions("Stasis", Material.CAMPFIRE, null);
+        assertActions("Needs", Material.CLOCK, Material.SPYGLASS, Material.BARRIER);
+        assertActions("Profiling", null, null, null);
+        assertActions("Ready", Material.BLUE_ICE, null, Material.BARRIER);
+        assertActions("Stasis", Material.CAMPFIRE, null, null);
         assertEquals(1, opened.size(), "no separate screen per farm");
 
         click(slotOf("Needs") + 1);
         assertEquals(List.of(List.of("profile", "--id", needs.id().toString())), commands);
+        verify(player).closeInventory();
+    }
+
+    @Test
+    void longProfilingHasItsOwnButton() {
+        var farm = farm(creator, "Cane", 0);
+        screens.openList(player);
+        click(slotOf("Cane") + 2);
+        assertEquals(List.of(List.of("profile-long", "--id", farm.id().toString())), commands);
         verify(player).closeInventory();
     }
 
@@ -98,7 +107,7 @@ class FarmScreensTest {
         var farm = farm(creator, "Iron", 0);
         var id = farm.id().toString();
         screens.openList(player);
-        int delete = slotOf("Iron") + 2;
+        int delete = slotOf("Iron") + 3;
 
         click(delete);
         assertEquals(List.of(List.of("unregister", "--id", id)), commands, "the request explains what is deleted");
@@ -158,10 +167,11 @@ class FarmScreensTest {
         assertTrue(last().icons().values().stream().anyMatch(icon -> icon.name().equals("F0")));
     }
 
-    private void assertActions(String farm, Material main, Material delete) {
+    private void assertActions(String farm, Material main, Material longProfile, Material delete) {
         int status = slotOf(farm);
         assertEquals(main, material(status + 1), farm + " main action");
-        assertEquals(delete, material(status + 2), farm + " delete");
+        assertEquals(longProfile, material(status + 2), farm + " long profiling");
+        assertEquals(delete, material(status + 3), farm + " delete");
     }
 
     private Material material(int slot) {

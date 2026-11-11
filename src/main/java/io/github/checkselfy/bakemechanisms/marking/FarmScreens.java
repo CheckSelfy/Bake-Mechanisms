@@ -1,5 +1,6 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,15 +18,16 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 
 /**
- * The screen of a player's farms. Each farm is a group of slots: a block showing its state, then the operation its
- * state allows (profile, stasis or unstasis) and deletion when allowed. Operations run the {@code /bake}
+ * The screen of a player's farms. Each farm is a group of four slots: a block showing its state, the operation its
+ * state allows (profile, stasis or unstasis), long profiling and deletion; a slot whose action the state does not
+ * allow stays empty, so every action keeps its column. Operations run the {@code /bake}
  * subcommands as the player, so their rules, creator checks and messages stay those of the commands. Deletion is
  * confirmed by a second click on the same slot. Server thread only.
  */
 public final class FarmScreens implements Listener {
-    /** Two farms per row, in columns 1–3 and 5–7, on five rows; the last row holds the page arrows. */
+    /** Two farms per row, in columns 0–3 and 5–8, on five rows; the last row holds the page arrows. */
     static final int FARMS_PER_PAGE = 10;
-    private static final int[] GROUP_COLUMNS = { 1, 5 };
+    private static final int[] GROUP_COLUMNS = { 0, 5 };
     static final int PREVIOUS_SLOT = 45;
     static final int NEXT_SLOT = 53;
     private static final String CONFIRM = "confirm";
@@ -49,11 +51,14 @@ public final class FarmScreens implements Listener {
 
     private static final Map<FarmRegistry.State, Operation> OPERATIONS = Map.of(
             FarmRegistry.State.NEEDS_PROFILING, new Operation("profile", Material.CLOCK, "Профилировать",
-                    "Замер производства фермы."),
+                    "Замер на " + ProfilingSettings.DURATION_TICKS + " тиков."),
             FarmRegistry.State.READY, new Operation("stasis", Material.BLUE_ICE, "В стазис",
                     "Механизм заменится заполнителем."),
             FarmRegistry.State.STASIS, new Operation("unstasis", Material.CAMPFIRE, "Из стазиса",
                     "Механизм вернётся; нужен новый замер."));
+
+    private static final Operation LONG_PROFILE = new Operation("profile-long", Material.SPYGLASS,
+            "Долгое профилирование", "Замер на " + ProfilingSettings.LONG_DURATION_TICKS + " тиков, точнее.");
 
     private static final Map<FarmRegistry.State, Material> BLOCKS = Map.of(
             FarmRegistry.State.NEEDS_PROFILING, Material.YELLOW_CONCRETE,
@@ -163,28 +168,32 @@ public final class FarmScreens implements Listener {
         var id = farm.id().toString();
         content.show(slot, new FarmScreen.Icon(BLOCKS.get(farm.state()), name(farm), describe(farm)));
         var operation = OPERATIONS.get(farm.state());
-        if (operation != null) {
-            content.exit(slot + 1, new FarmScreen.Icon(operation.icon(), operation.title(),
-                    List.of(operation.description())), () -> nextTick.accept(() -> {
-                        player.closeInventory();
-                        commands.run(player, operation.command(), FarmArguments.ID_FLAG, id);
-                    }));
-        }
+        if (operation != null) operation(player, content, slot + 1, operation, id);
+        if (farm.state() == FarmRegistry.State.NEEDS_PROFILING) operation(player, content, slot + 2, LONG_PROFILE, id);
         if (farm.state() != FarmRegistry.State.NEEDS_PROFILING && farm.state() != FarmRegistry.State.READY) return;
         if (farm.id().equals(deleting)) {
-            content.button(slot + 2, new FarmScreen.Icon(Material.TNT, "Точно удалить?",
+            content.button(slot + 3, new FarmScreen.Icon(Material.TNT, "Точно удалить?",
                     List.of("Нажмите ещё раз в течение " + FarmRemoval.CONFIRMATION_SECONDS + " с.",
                             "Механизм в мире не изменится.")), () -> {
                         commands.run(player, "unregister", FarmArguments.ID_FLAG, id, CONFIRM);
                         show(player, open, page, null);
                     });
         } else {
-            content.button(slot + 2, new FarmScreen.Icon(Material.LAVA_BUCKET, "Удалить",
+            content.button(slot + 3, new FarmScreen.Icon(Material.BARRIER, "Удалить",
                     List.of("Удаляет регистрацию и профиль.", "Попросит подтверждения.")), () -> {
                         commands.run(player, "unregister", FarmArguments.ID_FLAG, id);
                         show(player, open, page, farm.id());
                     });
         }
+    }
+
+    /** A button that closes the screen and runs the operation's command on the farm. */
+    private void operation(Player player, FarmScreen content, int slot, Operation operation, String id) {
+        content.exit(slot, new FarmScreen.Icon(operation.icon(), operation.title(), List.of(operation.description())),
+                () -> nextTick.accept(() -> {
+                    player.closeInventory();
+                    commands.run(player, operation.command(), FarmArguments.ID_FLAG, id);
+                }));
     }
 
     private static String label(FarmRegistry.State state) {
