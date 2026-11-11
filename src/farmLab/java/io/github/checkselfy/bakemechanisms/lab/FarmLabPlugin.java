@@ -48,6 +48,7 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
     private record Manifest(int format, int layout_version, String world, List<Farm> farms) {}
     private Manifest manifest;
     private World world;
+    private MobFarmPlots mobs;
 
     public List<Farm> farms() { return manifest.farms(); }
     public World world() { return world; }
@@ -97,6 +98,8 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                 Files.writeString(layout, "layout=2\nremoved-exterior-water=" + removed + "\n");
                 getLogger().info("FARM_LAB_LAYOUT_UPDATED version=2 exterior-water-removed=" + removed);
             }
+            mobs = new MobFarmPlots(this, world);
+            mobs.initialize();
             Objects.requireNonNull(getCommand("farmlab")).setExecutor(this);
             getServer().getPluginManager().registerEvents(this, this);
             getLogger().info("FARM_LAB_READY farms=" + farms().size() + " world=" + world.getName());
@@ -288,6 +291,9 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
             if (args.length == 1 && args[0].equals("list")) {
                 for (var farm : farms()) sender.sendMessage(farm.id() + ": GOLD " + coordinates(farm.destination())
                         + " -> LIME " + coordinates(farm.maximum()) + "; output barrel " + coordinates(farm.output()));
+                mobs.list(sender);
+            } else if (args.length == 1 && args[0].equals("check-mobs")) {
+                mobs.check(sender);
             } else if (args.length == 3 && args[0].equals("compare")) {
                 compare(sender, args[1], Integer.parseInt(args[2]));
             } else if (sender instanceof Player player) {
@@ -310,6 +316,10 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                             StandardOpenOption.CREATE, StandardOpenOption.APPEND);
                     player.sendMessage("Observation recorded in plugins/BakeFarmLab/manual-notes.txt");
                 } else if (args.length >= 2) {
+                    if (mobs.contains(args[1])) {
+                        mobs.navigate(player, args);
+                        return true;
+                    }
                     var farm = find(args[1]);
                     if (args.length == 2 && args[0].equals("visit")) {
                         player.teleport(new Location(world, farm.destination()[0] - 3.5, 64, farm.size()[2] / 2.0));

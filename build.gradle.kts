@@ -194,6 +194,7 @@ tasks.register<Jar>("correctnessJar") {
     group = "verification"
     archiveFileName.set("bake-correctness.jar")
     from(correctness.output)
+    from("test-worlds/ppl9-mobs") { into("mob-fixtures"); exclude("README.md") }
 }
 
 // Small extracted map fixtures, shared by manual and headless testing.
@@ -206,6 +207,7 @@ tasks.register<Jar>("farmLabJar") {
     archiveFileName.set("bake-farm-lab.jar")
     from(farmLab.output) { exclude("**/FarmLabReviewPlugin*") }
     from("test-worlds/ppl9") { into("fixtures"); exclude("README.md") }
+    from("test-worlds/ppl9-mobs") { into("mob-fixtures"); exclude("README.md") }
 }
 tasks.register<Jar>("farmLabReviewJar") {
     group = "verification"

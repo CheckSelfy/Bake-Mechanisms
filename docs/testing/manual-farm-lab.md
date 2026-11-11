@@ -16,7 +16,15 @@ In your launcher choose **Minecraft Java Edition 26.3**. Open **Multiplayer → 
 
 The first join takes you to the farm lab. You do not need OP. If a server is already running on that address, join it instead of starting another copy.
 
-## Comparison copies
+## Mob farms
+
+The same launch command now also installs `skeleton` and `zombie` plots in existing labs on the next restart. Stop with `/farmlab stop`, then rerun `python scripts/farm-lab.py run --server run/farm-lab`. Existing crop farms and registrations are retained; occupied new plots are refused rather than overwritten.
+
+Use `/farmlab list`, `/farmlab visit skeleton` or `/farmlab visit zombie`. Skeleton selection is `(160,64,0)`–`(172,88,12)`, double output chest `(159,71,6)`. Zombie selection is `(224,64,0)`–`(237,78,13)`, double output chest `(238,67,2)`. `/farmlab corner <id> 1|2|output` works for both. The visit command places you at the AFK point within spawner range; visiting skeleton assigns its tame wolves to you so their native kills can produce armor. Stay at that point to keep it working.
+
+These use the [documented mob-fixture adaptations](../../test-worlds/ppl9-mobs/README.md), hard difficulty and accelerated native spawner delays; they are functional fixtures, not vanilla-yield benchmarks. No tick sprint is enabled in the manual lab. Before profiling, clear starting inventory stock and already-spawned equipped mobs as required by input protection.
+
+## Crop comparison copies
 
 Each original has a copy 32 blocks east: `cactus-control` starts at `(32,64,0)` with output `(34,65,-1)`; `cane-control` starts at `(96,64,0)` with output `(95,64,8)`. All four have independent mechanism/output chunks. Existing labs upgrade in place without replacing your originals or registrations; the controls initially copy their exact current blocks, crop ages, internal inventories and output contents. Outside water is cleaned up and the openings that caused the spills are fixed.
 
