@@ -76,8 +76,16 @@ final class ProfilingInputCheck extends BukkitRunnable {
         try { disabled.setBoolean(hopperConfig,true); refuse("disable-move-event"); }
         finally { disabled.setBoolean(hopperConfig,wasDisabled); }
 
+        world.getBlockAt(517,301,2).setType(Material.BARREL,false);
         contents(517,301,2).setItem(0,new ItemStack(Material.DIAMOND,64));
         refuse("внутренние");
+        contents(517,301,2).clear();
+        hopper(517,301,2,BlockFace.EAST,true);
+        contents(517,301,2).setItem(0,new ItemStack(Material.SUGAR_CANE,64));
+        service.start(farm.id(),creator);
+        require(registry.requireCreator(farm.id(),creator).state()==FarmRegistry.State.PROFILING,"Prefilled internal hopper blocked startup");
+        require(count(517,301,2,Material.SUGAR_CANE)==64,"Startup changed the hopper stock");
+        service.cancel(farm.id(),creator);
         contents(517,301,2).clear();
         hopper(518,302,2,BlockFace.DOWN,true);
         contents(518,302,2).setItem(0,new ItemStack(Material.DIAMOND,64));

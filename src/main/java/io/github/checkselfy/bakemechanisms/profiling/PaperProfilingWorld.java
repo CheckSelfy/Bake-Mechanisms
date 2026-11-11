@@ -70,7 +70,7 @@ public final class PaperProfilingWorld implements ProfilingWorld {
                         }
                         boolean shears = holder instanceof Dispenser && java.util.Arrays.stream(inventory.getContents())
                                 .allMatch(item -> item == null || item.isEmpty() || item.getType() == Material.SHEARS);
-                        if (!inventory.isEmpty() && !shears) throw new IllegalStateException("Опустошите внутренние инвентари перед "
+                        if (!inventory.isEmpty() && !shears && !(holder instanceof org.bukkit.block.Hopper)) throw new IllegalStateException("Опустошите внутренние инвентари перед "
                                 + "профилированием: " + block.getType() + " в " + x + ", " + y + ", " + z
                                 + ". Начальные запасы нельзя отличить от продукции фермы; в раздатчике разрешены только ножницы.");
                     }
