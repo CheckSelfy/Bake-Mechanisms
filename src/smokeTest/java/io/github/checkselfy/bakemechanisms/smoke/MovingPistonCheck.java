@@ -94,10 +94,10 @@ final class MovingPistonCheck {
         }
         await(plugin, 10, () -> !hasMoving(world), () -> {
         service.enter(farm.id(), creator);
-        each(world, block -> check(block.getType() == Material.BEDROCK, "piston replacement incomplete"));
+        each(world, block -> check(FillerAssertions.matches(block, region), "piston replacement incomplete"));
         check(world.getNearbyEntities(bounds).isEmpty(), "piston replacement dropped items");
         later(plugin, 2, () -> {
-            each(world, block -> check(block.getType() == Material.BEDROCK, "original piston resumed during stasis"));
+            each(world, block -> check(FillerAssertions.matches(block, region), "original piston resumed during stasis"));
             var recovered = new StasisService(new FarmRegistry(1), adapter, store);
             try {
                 recovered.recover();

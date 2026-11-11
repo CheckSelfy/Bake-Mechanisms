@@ -19,6 +19,7 @@ public final class StasisService {
     private final SnapshotStore store;
     private final Map<UUID, SavedSnapshot> active = new LinkedHashMap<>();
     private final StasisProduction production;
+    private final FillerStyle filler;
 
     public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store) {
         this(registry, world, store, StasisProduction.NONE);
@@ -26,10 +27,16 @@ public final class StasisService {
 
     public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store,
                          StasisProduction production) {
+        this(registry,world,store,production,FillerStyle.DEFAULT);
+    }
+
+    public StasisService(FarmRegistry registry, StasisWorld world, SnapshotStore store,
+                         StasisProduction production,FillerStyle filler) {
         this.registry = registry;
         this.world = world;
         this.store = store;
         this.production = production;
+        this.filler = java.util.Objects.requireNonNull(filler,"filler");
     }
 
     /**
@@ -63,7 +70,7 @@ public final class StasisService {
         SavedSnapshot snapshot;
         try {
             var data = world.capture(farm);
-            snapshot = new SavedSnapshot(farm.with(State.STASIS, farm.profile()), data);
+            snapshot = new SavedSnapshot(farm.with(State.STASIS, farm.profile()), data,filler);
             store.save(snapshot);
         } catch (IOException | IllegalStateException error) {
             throw new IllegalArgumentException("Снимок не сохранён, мир не изменён: " + error.getMessage(), error);
@@ -73,7 +80,7 @@ public final class StasisService {
         var stasisFarm = registry.markStasis(farmId);
         try {
             world.removeEntities(farm, snapshot.data());
-            world.fill(farm.mechanism());
+            world.fill(farm.mechanism(),snapshot.filler());
         } catch (RuntimeException error) {
             // Only a complete filler stands in for the mechanism; a remaining original must not run alongside.
             if (refill(farm, error)) production.start(stasisFarm);
@@ -125,7 +132,7 @@ public final class StasisService {
         try {
             var snapshot = active.get(farm.id());
             if (snapshot != null) world.removeEntities(farm, snapshot.data());
-            world.fill(farm.mechanism());
+            world.fill(farm.mechanism(),snapshot.filler());
             return true;
         } catch (RuntimeException rollbackError) {
             if (failure != rollbackError) failure.addSuppressed(rollbackError);

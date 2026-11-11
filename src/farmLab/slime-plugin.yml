@@ -1,0 +1,10 @@
+name: BakeSlimeGallery
+version: '1'
+main: io.github.checkselfy.bakemechanisms.lab.SlimeGallery
+api-version: '26.3'
+depend: [BakeMechanisms]
+description: Disposable visual gallery for the slime filler; never install on a gameplay server.
+commands:
+  slimegallery:
+    description: View the nine acceptance sizes of the decorative filler.
+    usage: /slimegallery [1..9]

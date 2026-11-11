@@ -232,7 +232,13 @@ final class ClientAcceptanceReview {
             for (var breakMode : new GameMode[] {GameMode.SURVIVAL, GameMode.CREATIVE}) {
                 actions.add(() -> b.setGameMode(breakMode));
                 packet(bName(), () -> "left\t" + x + "\t64\t0");
-                actions.add(() -> require(world.getBlockAt(x, 64, 0).getType() == Material.BEDROCK, "wire break damaged filler in " + breakMode));
+                actions.add(() -> {
+                    var region = storage.loadAll().stream().filter(f -> f.farm().id().equals(farm)).findFirst().orElseThrow().farm().mechanism();
+                    var filler = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region,
+                            io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
+                    require(world.getBlockAt(x, 64, 0).getType() == filler.material(x-region.min().x(),64-region.min().y(),-region.min().z()),
+                            "wire break damaged filler in " + breakMode);
+                });
             }
             actions.add(() -> {
                 world.getBlockAt(x + 16, 64, 3).setBlockData(plugin.getServer().createBlockData("minecraft:piston[facing=west,extended=false]"));

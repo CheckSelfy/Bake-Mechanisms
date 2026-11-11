@@ -63,8 +63,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                             getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", behaviorError);
                             getServer().shutdown();
                         } else ProfilingInputCheck.run(this, profilingError -> {
-                            if (profilingError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", profilingError);
-                            getServer().shutdown();
+                            if (profilingError != null) {
+                                getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", profilingError);
+                                getServer().shutdown();
+                            } else SlimeFillerCheck.run(this, fillerError -> {
+                                if(fillerError!=null) getLogger().log(Level.SEVERE,"BLOCK_STASIS_SMOKE_FAILED",fillerError);
+                                getServer().shutdown();
+                            });
                         });
                     });
                 });
@@ -140,7 +145,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         check(outputItem.equals(((Container) outputBlock.getState(false)).getInventory().getItem(0)), "save failure changed output");
         getLogger().info("SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED");
         service.enter(farm.id(), creator);
-        assertBedrock(world, expectedBlocks);
+        assertFiller(world, expectedBlocks);
         check(registry.requireCreator(farm.id(), creator).state() == State.STASIS, "state after enter");
         check(outputItem.equals(((Container) outputBlock.getState(false)).getInventory().getItem(0)), "output changed");
         check(world.getNearbyEntities(new org.bukkit.util.BoundingBox(-1, 299, -1, 7, 304, 7)).isEmpty(), "replacement dropped items");
@@ -155,7 +160,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
             public boolean hasPlayerInside(Cuboid box) { return adapter.hasPlayerInside(box); }
             public byte[] capture(FarmRegistry.MarkedFarm marked) { return adapter.capture(marked); }
             public void removeEntities(FarmRegistry.MarkedFarm marked, byte[] data) { adapter.removeEntities(marked, data); }
-            public void fill(Cuboid box) { adapter.fill(box); }
+            public void fill(Cuboid box,io.github.checkselfy.bakemechanisms.stasis.FillerStyle style) { adapter.fill(box,style); }
             public void restore(FarmRegistry.MarkedFarm marked, byte[] data) {
                 adapter.restore(marked, data);
                 if (fail) { fail = false; throw new IllegalStateException("injected partial restore error"); }
@@ -167,7 +172,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
             retryService.restore(farm.id(), creator);
             throw new AssertionError("partial failure was not propagated");
         } catch (IllegalArgumentException expected) {
-            assertBedrock(world, expectedBlocks);
+            assertFiller(world, expectedBlocks);
             check(store.loadActive().size() == 1, "failed restore lost snapshot");
         }
         retryService.restore(farm.id(), creator);
@@ -179,7 +184,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         var recoveredRegistry = new FarmRegistry(1);
         var recovered = new StasisService(recoveredRegistry, adapter, store);
         recovered.recover();
-        assertBedrock(world, expectedBlocks);
+        assertFiller(world, expectedBlocks);
         recovered.restore(farm.id(), creator);
         assertRestored(world, expectedBlocks, expectedItems);
 
@@ -265,8 +270,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         var profile = new ProductionProfile(Map.of(Material.SUGAR_CANE, 1.0), 3600);
         registry.markReady(farm.id(), profile);
         service.enter(farm.id(), creator);
-        expectedSigns.keySet().forEach(position -> check(world.getBlockAt(position.x(), position.y(), position.z())
-                .getType() == Material.BEDROCK, "sign was not replaced"));
+        expectedSigns.keySet().forEach(position -> check(FillerAssertions.matches(world.getBlockAt(position.x(), position.y(), position.z()), region), "sign was not replaced"));
         service.restore(farm.id(), creator);
         assertSigns(world, expectedSigns, key);
         registry.markReady(farm.id(), profile);
@@ -355,7 +359,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         service.enter(farmId, creator);
         for (var id : locations.keySet()) check(getServer().getEntity(id) == null, "original entity remains in stasis: " + id);
         check(world.getNearbyEntities(new org.bukkit.util.BoundingBox(-2, 298, -2, 10, 310, 10)).isEmpty(), "entity removal dropped inventory items");
-        assertBedrock(world, blocks);
+        assertFiller(world, blocks);
 
         var recoveredRegistry = new FarmRegistry(FarmRegistry.DEFAULT_MAX_VOLUME);
         var recovered = new StasisService(recoveredRegistry, adapter, store);
@@ -379,7 +383,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
             public boolean hasPlayerInside(Cuboid box) { return adapter.hasPlayerInside(box); }
             public byte[] capture(FarmRegistry.MarkedFarm marked) { return adapter.capture(marked); }
             public void removeEntities(FarmRegistry.MarkedFarm marked, byte[] data) { adapter.removeEntities(marked, data); }
-            public void fill(Cuboid box) { adapter.fill(box); }
+            public void fill(Cuboid box,io.github.checkselfy.bakemechanisms.stasis.FillerStyle style) { adapter.fill(box,style); }
             public void restore(FarmRegistry.MarkedFarm marked, byte[] data) {
                 adapter.restore(marked, data);
                 if (fail) { fail = false; throw new IllegalStateException("injected entity restore error"); }
@@ -391,7 +395,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         expectRefused(() -> retry.restore(farmId, creator));
         for (var id : locations.keySet()) check(getServer().getEntity(id) == null, "failed restore left entity copy");
         check(world.getNearbyEntities(new org.bukkit.util.BoundingBox(-2, 298, -2, 10, 310, 10)).isEmpty(), "rollback dropped inventory items");
-        assertBedrock(world, blocks);
+        assertFiller(world, blocks);
         retry.restore(farmId, creator);
         assertRestoredEntities(locations, types, cart.getUniqueId(), zombie.getUniqueId());
         assertChicken(chicken.getUniqueId());
@@ -451,9 +455,12 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         entities.forEach(org.bukkit.entity.Entity::remove);
     }
 
-    private static void assertBedrock(World world, Map<BlockPosition, String> blocks) {
-        blocks.keySet().forEach(position -> check(world.getBlockAt(position.x(), position.y(), position.z())
-                .getType() == Material.BEDROCK, "incomplete filler at " + position));
+    private static void assertFiller(World world, Map<BlockPosition, String> blocks) {
+        var region = new Cuboid(point(world, blocks.keySet().stream().mapToInt(BlockPosition::x).min().orElseThrow(),
+                blocks.keySet().stream().mapToInt(BlockPosition::y).min().orElseThrow(), blocks.keySet().stream().mapToInt(BlockPosition::z).min().orElseThrow()),
+                point(world, blocks.keySet().stream().mapToInt(BlockPosition::x).max().orElseThrow(),
+                blocks.keySet().stream().mapToInt(BlockPosition::y).max().orElseThrow(), blocks.keySet().stream().mapToInt(BlockPosition::z).max().orElseThrow()));
+        blocks.keySet().forEach(position -> check(FillerAssertions.matches(world.getBlockAt(position.x(), position.y(), position.z()), region), "incomplete filler at " + position));
     }
 
     private static void expectRefused(Runnable action) {
