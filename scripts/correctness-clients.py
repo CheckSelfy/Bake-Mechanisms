@@ -6,6 +6,7 @@ Only login/configuration, teleport acknowledgement, chunk acknowledgement, and k
 are implemented. This intentionally provides no claim of rendered UI/input coverage.
 """
 import hashlib
+import argparse
 import io
 import socket
 import struct
@@ -40,8 +41,8 @@ def string(value):
     return varint(len(data)) + data
 
 
-def connect(username, command=None):
-    with socket.create_connection(('127.0.0.1', 25566), timeout=30) as sock:
+def connect(username, command=None, port=25566):
+    with socket.create_connection(('127.0.0.1', port), timeout=30) as sock:
         stream = sock.makefile('rb')
         compressed = False
 
@@ -52,7 +53,7 @@ def connect(username, command=None):
                 packet = b'\0' + packet
             sock.sendall(varint(len(packet)) + packet)
 
-        send(0, varint(777) + string('127.0.0.1') + struct.pack('>H', 25566) + varint(2))
+        send(0, varint(777) + string('127.0.0.1') + struct.pack('>H', port) + varint(2))
         offline = uuid.UUID(bytes=hashlib.md5(('OfflinePlayer:' + username).encode()).digest(), version=3)
         send(0, string(username) + offline.bytes)
         state = 'login'
@@ -123,11 +124,16 @@ def connect(username, command=None):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--port', type=int, default=25566)
+    args = parser.parse_args()
+    if not 1 <= args.port <= 65535:
+        parser.error('port must be between 1 and 65535')
     errors = []
 
     def client(username):
         try:
-            connect(username)
+            connect(username, port=args.port)
         except Exception as error:
             errors.append(error)
             print(username, type(error).__name__, str(error), flush=True)

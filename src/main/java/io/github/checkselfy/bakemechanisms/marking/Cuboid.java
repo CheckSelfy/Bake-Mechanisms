@@ -34,6 +34,22 @@ public record Cuboid(BlockPosition min, BlockPosition max) {
                 && block.z() >= min.z() && block.z() <= max.z();
     }
 
+    /** Saturating arithmetic keeps protection bounds valid even at integer coordinate limits. */
+    public Cuboid expanded(int blocks) {
+        if (blocks < 0) throw new IllegalArgumentException("Расширение не может быть отрицательным.");
+        return new Cuboid(new BlockPosition(min.worldId(), bounded((long) min.x() - blocks),
+                bounded((long) min.y() - blocks), bounded((long) min.z() - blocks)),
+                new BlockPosition(max.worldId(), bounded((long) max.x() + blocks),
+                        bounded((long) max.y() + blocks), bounded((long) max.z() + blocks)));
+    }
+
+    public boolean overlaps(Cuboid other) {
+        return min.worldId().equals(other.min.worldId()) && min.x() <= other.max.x() && max.x() >= other.min.x()
+                && min.y() <= other.max.y() && max.y() >= other.min.y() && min.z() <= other.max.z() && max.z() >= other.min.z();
+    }
+
+    private static int bounded(long value) { return (int) Math.clamp(value, Integer.MIN_VALUE, Integer.MAX_VALUE); }
+
     public boolean sharesMechanismChunks(Cuboid other) {
         return min.worldId().equals(other.min.worldId())
                 && (min.x() >> 4) <= (other.max.x() >> 4)

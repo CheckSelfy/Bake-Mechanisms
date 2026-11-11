@@ -7,7 +7,6 @@ import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
-import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -29,16 +28,20 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
-import org.bukkit.inventory.BlockInventoryHolder;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
+import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.block.BlockFace;
+import java.util.List;
 import org.bukkit.util.BoundingBox;
 
 /**
- * Isolates profiled farms from players: no entry, no changes to the mechanism or output.
- * All handlers run on the server thread. Known gaps: vehicles ridden into the cuboid,
- * players logging in or respawning inside it, and indirect effects (fluids, pistons, TNT lit outside).
+ * Isolates the mechanism and its two-block belt from player actions and external physics.
+ * Natural changes inside the mechanism remain allowed; transport provenance is handled separately.
  */
 public final class ProfilingProtection implements Listener {
     private static final Component DENIED = Component.text("Ферма профилируется: область защищена.");
@@ -124,6 +127,11 @@ public final class ProfilingProtection implements Listener {
     public void onDamage(EntityDamageByEntityEvent event) {
         var player = responsiblePlayer(event.getDamager());
         if (player != null && insideMechanism(event.getEntity())) deny(event, player);
+        if (event.getCause() == org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
+            for (var isolation : service.isolations()) if (isolation.farm().mechanism().min().worldId().equals(event.getEntity().getWorld().getUID())
+                    && PaperProfilingWorld.box(isolation.area()).overlaps(event.getEntity().getBoundingBox())
+                    && !isolation.hasActor(event.getDamager().getUniqueId())) event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -134,26 +142,62 @@ public final class ProfilingProtection implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onOpen(InventoryOpenEvent event) {
-        var holder = event.getInventory().getHolder(false);
-        boolean output = holder instanceof DoubleChest chest
-                ? isOutput(chest.getLeftSide(false)) || isOutput(chest.getRightSide(false))
-                : isOutput(holder);
-        if (output) deny(event, event.getPlayer() instanceof Player player ? player : null);
+        boolean protectedInventory = ProfilingTransportProtection.positions(event.getInventory()).stream().anyMatch(this::isProtected);
+        if (event.getInventory().getHolder(false) instanceof Entity entity) protectedInventory |= insideMechanism(entity);
+        if (protectedInventory) deny(event, event.getPlayer() instanceof Player player ? player : null);
     }
 
     /** Only the output is shielded: explosions inside the mechanism may be part of the farm itself. */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
-        event.blockList().removeIf(this::isProtectedOutput);
+        event.blockList().removeIf(block -> isProtectedOutput(block) || service.isolations().stream().anyMatch(isolation ->
+                isolation.area().contains(PaperOutputResolver.position(block)) && !isolation.hasActor(event.getEntity().getUniqueId())));
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
-        event.blockList().removeIf(this::isProtectedOutput);
+        var source = PaperOutputResolver.position(event.getBlock());
+        event.blockList().removeIf(block -> isProtectedOutput(block) || service.isolations().stream().anyMatch(isolation ->
+                isolation.area().contains(PaperOutputResolver.position(block)) && !isolation.farm().mechanism().contains(source)));
     }
 
-    private boolean isOutput(InventoryHolder holder) {
-        return holder instanceof BlockInventoryHolder block && isProtectedOutput(block.getBlock());
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onFlow(BlockFromToEvent event) {
+        var source = PaperOutputResolver.position(event.getBlock());
+        var destination = PaperOutputResolver.position(event.getToBlock());
+        for (var isolation : service.isolations()) if (isolation.area().contains(destination)
+                && !isolation.farm().mechanism().contains(source)) { event.setCancelled(true); return; }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onIgnite(BlockIgniteEvent event) {
+        if (event.getPlayer() != null && isProtected(event.getBlock())) deny(event, event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onFish(PlayerFishEvent event) {
+        if (event.getCaught() != null && insideMechanism(event.getCaught())) deny(event, event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPiston(BlockPistonExtendEvent event) { piston(event.getBlock(), event.getBlocks(), event.getDirection(), event); }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPiston(BlockPistonRetractEvent event) { piston(event.getBlock(), event.getBlocks(), event.getDirection(), event); }
+
+    private void piston(Block piston, List<Block> blocks, BlockFace direction, Cancellable event) {
+        var source = PaperOutputResolver.position(piston);
+        for (var isolation : service.isolations()) {
+            boolean touches = isolation.area().contains(source) || blocks.stream().anyMatch(block ->
+                    isolation.area().contains(PaperOutputResolver.position(block))
+                            || isolation.area().contains(PaperOutputResolver.position(block.getRelative(direction))));
+            if (!touches) continue;
+            if (!isolation.farm().mechanism().contains(source)
+                    || blocks.stream().anyMatch(block -> isolation.isOutput(PaperOutputResolver.position(block))
+                        || isolation.isOutput(PaperOutputResolver.position(block.getRelative(direction))))) {
+                event.setCancelled(true); return;
+            }
+        }
     }
 
     private boolean isProtectedOutput(Block block) {
@@ -171,7 +215,7 @@ public final class ProfilingProtection implements Listener {
         var box = entity.getBoundingBox();
         var worldId = entity.getWorld().getUID();
         return service.activeFarms().stream().anyMatch(farm -> farm.mechanism().min().worldId().equals(worldId)
-                && PaperProfilingWorld.box(farm.mechanism()).overlaps(box));
+                && PaperProfilingWorld.box(farm.mechanism().expanded(ProfilingIsolation.MARGIN)).overlaps(box));
     }
 
     private boolean entersMechanism(Player player, Location location) {
@@ -181,7 +225,7 @@ public final class ProfilingProtection implements Listener {
                 location.getX() + half, location.getY() + player.getHeight(), location.getZ() + half);
         UUID worldId = location.getWorld().getUID();
         return service.activeFarms().stream().anyMatch(farm -> farm.mechanism().min().worldId().equals(worldId)
-                && PaperProfilingWorld.box(farm.mechanism()).overlaps(box));
+                && PaperProfilingWorld.box(farm.mechanism().expanded(ProfilingIsolation.MARGIN)).overlaps(box));
     }
 
     private boolean isProtected(Block block) {
@@ -189,7 +233,7 @@ public final class ProfilingProtection implements Listener {
     }
 
     private boolean isProtected(BlockPosition position) {
-        return service.activeFarms().stream().anyMatch(farm -> farm.mechanism().contains(position)
+        return service.activeFarms().stream().anyMatch(farm -> farm.mechanism().expanded(ProfilingIsolation.MARGIN).contains(position)
                 || farm.outputBlocks().anyMatch(position::equals));
     }
 

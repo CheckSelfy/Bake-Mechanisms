@@ -19,7 +19,7 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
     private final Server server;
     private final Map<UUID, ActiveBar> bars = new HashMap<>();
 
-    private record ActiveBar(Player player, BossBar bar) { }
+    private record ActiveBar(Player player, BossBar bar, int durationTicks) { }
 
     public ProfilingProgressDisplay(Server server) {
         this.server = Objects.requireNonNull(server, "server");
@@ -27,10 +27,15 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
 
     @Override
     public void started(MarkedFarm farm) {
+        started(farm, ProfilingSettings.DURATION_TICKS);
+    }
+
+    @Override
+    public void started(MarkedFarm farm, int durationTicks) {
         var player = server.getPlayer(farm.creatorId());
         if (player == null) return;
-        var bar = BossBar.bossBar(title(farm.id(), 0), 0.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
-        bars.put(farm.id(), new ActiveBar(player, bar));
+        var bar = BossBar.bossBar(title(farm.id(), 0, durationTicks), 0.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
+        bars.put(farm.id(), new ActiveBar(player, bar, durationTicks));
         player.showBossBar(bar);
     }
 
@@ -39,9 +44,9 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
         if (elapsedTicks % UPDATE_INTERVAL_TICKS != 0) return;
         var active = bars.get(farm.id());
         if (active == null) return;
-        float progress = (float) elapsedTicks / ProfilingSettings.DURATION_TICKS;
+        float progress = (float) elapsedTicks / active.durationTicks();
         active.bar().progress(progress);
-        active.bar().name(title(farm.id(), elapsedTicks));
+        active.bar().name(title(farm.id(), elapsedTicks, active.durationTicks()));
     }
 
     @Override
@@ -66,9 +71,9 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
         if (active != null) active.player().hideBossBar(active.bar());
     }
 
-    private static Component title(UUID farmId, long elapsedTicks) {
-        long remainingTicks = ProfilingSettings.DURATION_TICKS - elapsedTicks;
-        int percent = (int) (elapsedTicks * 100 / ProfilingSettings.DURATION_TICKS);
+    private static Component title(UUID farmId, long elapsedTicks, int durationTicks) {
+        long remainingTicks = durationTicks - elapsedTicks;
+        int percent = (int) (elapsedTicks * 100 / durationTicks);
         return Component.text("Ферма " + farmId + " · " + percent + "% · прошло " + time(elapsedTicks)
                 + " · осталось " + time(remainingTicks));
     }

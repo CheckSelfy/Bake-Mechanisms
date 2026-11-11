@@ -361,7 +361,7 @@ class StasisServiceTest {
     private FarmRegistry.MarkedFarm ready() {
         var point = new BlockPosition(worldId, 0, 64, 0);
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(
-                OutputContainer.Type.BARREL, Set.of(new BlockPosition(worldId, 32, 64, 0))));
+                OutputContainer.Type.BARREL, Set.of(new BlockPosition(worldId, 1, 64, 0))));
         return registry.markReady(farm.id(), new ProductionProfile(Map.of(Material.COBBLESTONE, 1.0), 3600));
     }
 

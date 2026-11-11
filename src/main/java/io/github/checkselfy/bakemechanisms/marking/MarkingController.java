@@ -32,12 +32,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
     private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "rename",
-            "profile", "sprint", "cancel", "delete", "clear");
-    private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "sprint", "cancel",
+            "profile", "profile-long", "sprint", "cancel", "delete", "clear");
+    private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "profile-long", "sprint", "cancel",
             "delete");
     private static final String FARM_USAGE = FarmArguments.USAGE;
     private static final String HELP = "/bake wand | output | register [имя] | list | info " + FARM_USAGE
-            + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | sprint " + FARM_USAGE
+            + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | profile-long " + FARM_USAGE + " | sprint " + FARM_USAGE
             + " (ускоряет весь сервер) | cancel " + FARM_USAGE + " | delete " + FARM_USAGE + " [confirm] | clear";
     private static final String CONFIRM = "confirm";
     /** Permission of the vanilla {@code /tick} command; {@code /bake sprint} needs it too. */
@@ -106,10 +106,11 @@ public final class MarkingController implements Listener, TabExecutor {
                     var renamed = registry.rename(target.farm().id(), actor, target.rest().getFirst());
                     player.sendMessage("Ферма переименована: " + renamed.title() + ".");
                 }
-                case "profile" -> {
-                    var farm = farm(player, args, "/bake profile " + FARM_USAGE).farm();
-                    profiling.start(farm.id(), actor);
-                    player.sendMessage("Профилирование запущено на " + ProfilingSettings.DURATION_TICKS
+                case "profile", "profile-long" -> {
+                    var farm = farm(player, args, "/bake " + args[0] + " " + FARM_USAGE).farm();
+                    if (args[0].equalsIgnoreCase("profile-long")) profiling.start(farm.id(), actor, ProfilingSettings.LONG_DURATION_TICKS);
+                    else profiling.start(farm.id(), actor);
+                    player.sendMessage("Профилирование запущено на " + profiling.remainingTicks(farm.id(), actor)
                             + " тиков. Область и выходные контейнеры защищены до завершения. Ускорить: /bake sprint "
                             + farm.reference());
                     show(player, registry.requireCreator(farm.id(), actor));

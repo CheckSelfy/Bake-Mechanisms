@@ -121,6 +121,7 @@ public final class FarmRegistry {
         }
         if (name != null) requireFreeName(creatorId, FarmNames.requireValid(name), null);
         validate(mechanism, outputs);
+        io.github.checkselfy.bakemechanisms.profiling.ProfilingIsolation.requireAdjacentOutputs(mechanism, outputs);
         var farm = new MarkedFarm(UUID.randomUUID(), creatorId, name, mechanism, outputs, State.NEEDS_PROFILING,
                 null);
         farms.put(farm.id(), farm);
@@ -129,7 +130,8 @@ public final class FarmRegistry {
     }
 
     /**
-     * Loads a farm saved before a restart under the same placement rules. The volume and output limits are not
+     * Loads a saved farm under the legacy placement rules so distant outputs do not prevent snapshot recovery.
+     * Profiling rechecks output proximity before a new run. The volume and output limits are not
      * rechecked: they govern new registrations, and lowering them must not drop existing farms. Unfinished
      * profiling is never stitched across a restart: a farm saved in {@link State#PROFILING} returns as
      * {@link State#NEEDS_PROFILING}, and only that change is reported to the listener.

@@ -25,14 +25,34 @@ class ProfilingServiceTest {
     private final ProfilingService service = new ProfilingService(registry, world, ProfilingSettings.DEFAULT);
 
     @Test
+    void longerRunMeasuresLateProductionAndFinishesAtSelectedTick() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
+        world.contents.put(farm.outputs().getFirst(), new OutputSnapshot(Map.of(), false));
+        var longer = new ProfilingService(registry, world, ProfilingSettings.DEFAULT);
+        longer.start(farm.id(), creator, 36000);
+        for (int i = 0; i < 3600; i++) longer.tick();
+        assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
+        assertEquals(32400, longer.remainingTicks(farm.id(), creator));
+        world.produce(farm.outputs().getFirst(), Material.SUGAR_CANE, 20);
+        for (int i = 3600; i < 35999; i++) { world.advance(); longer.tick(); }
+        assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
+        world.advance(); longer.tick();
+        var done = registry.requireCreator(farm.id(), creator);
+        assertEquals(State.READY, done.state());
+        assertEquals(Map.of(Material.SUGAR_CANE, 1.0), done.profile().ratesPer20Ticks());
+        assertTrue(world.tickets.isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> longer.start(farm.id(),creator,0));
+    }
+
+    @Test
     void completedRunStoresProfileAndReleasesAllTickets() {
-        // Mechanism spans chunks (0..1, 0); output sits in chunk (3, 0).
-        var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(50));
+        // The two-block protection belt also acquires neighbouring chunks at the zero boundary.
+        var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(21));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.COBBLESTONE, 7), false));
         service.start(farm.id(), creator);
 
         assertEquals(State.PROFILING, registry.requireCreator(farm.id(), creator).state());
-        assertEquals(Set.of(chunk(0, 0), chunk(1, 0), chunk(3, 0)), world.tickets);
+        assertEquals(chunks(-1, 0, 1), world.tickets);
 
         world.produce(farm.outputs().get(0), Material.COBBLESTONE, 20);
         tick(ProfilingSettings.DURATION_TICKS - 1);
@@ -48,7 +68,7 @@ class ProfilingServiceTest {
 
     @Test
     void profilingWaitsUntilTheLeftoverBufferIsDelivered() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         var draining = new HashSet<UUID>(Set.of(farm.id()));
         var guarded = new ProfilingService(registry, world, ProfilingSettings.DEFAULT, new ChunkTickets(world),
@@ -66,7 +86,7 @@ class ProfilingServiceTest {
 
     @Test
     void creatorCancelReleasesTicketsAndAllowsRestart() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         var stranger = UUID.randomUUID();
         assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), stranger));
@@ -93,20 +113,20 @@ class ProfilingServiceTest {
 
     @Test
     void concurrentFarmsKeepSharedOutputChunkLoadedUntilBothFinish() {
-        var first = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(80));
-        var second = register(new Cuboid(block(32, 0, 0), block(37, 5, 5)), output(82));
+        var first = register(new Cuboid(block(4, 0, 0), block(9, 5, 5)), output(10));
+        var second = register(new Cuboid(block(16, 0, 0), block(21, 5, 5)), output(22));
         world.contents.put(first.outputs().get(0), new OutputSnapshot(Map.of(), false));
         world.contents.put(second.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(first.id(), creator);
         tick(100);
         service.start(second.id(), creator);
-        assertEquals(Set.of(chunk(0, 0), chunk(2, 0), chunk(5, 0)), world.tickets);
+        assertEquals(chunks(0, 1), world.tickets);
 
         world.produce(first.outputs().get(0), Material.KELP, 10);
         tick(ProfilingSettings.DURATION_TICKS - 100);
         assertEquals(State.READY, registry.requireCreator(first.id(), creator).state());
         assertEquals(State.PROFILING, registry.requireCreator(second.id(), creator).state());
-        assertEquals(Set.of(chunk(2, 0), chunk(5, 0)), world.tickets);
+        assertEquals(chunks(0, 1), world.tickets);
 
         tick(100);
         assertEquals(Map.of(Material.KELP, 2.0),
@@ -118,8 +138,8 @@ class ProfilingServiceTest {
 
     @Test
     void startIsRejectedWithoutSideEffectsWhenPlayerInsideOrOutputMissing() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
-        world.occupied.add(farm.mechanism());
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
+        world.occupied.add(farm.mechanism().expanded(2));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         var inside = assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), creator));
         assertTrue(inside.getMessage().contains("игрок"));
@@ -134,7 +154,7 @@ class ProfilingServiceTest {
 
     @Test
     void outputLostDuringRunAbortsProfiling() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
         world.contents.clear();
@@ -146,7 +166,7 @@ class ProfilingServiceTest {
 
     @Test
     void shutdownCancelsEverySessionAndSaturatedOutputIsNoLongerSampled() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.STONE, 64), true));
@@ -162,7 +182,7 @@ class ProfilingServiceTest {
     @Test
     void snapshotIntervalIsConfigurableAndRunAlwaysEndsAt3600Ticks() {
         var sparse = new ProfilingService(registry, world, new ProfilingSettings(1000, 600, false));
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.SAND, 1), false));
         sparse.start(farm.id(), creator);
         world.produce(farm.outputs().get(0), Material.SAND, 20);
@@ -178,7 +198,7 @@ class ProfilingServiceTest {
 
     @Test
     void onlyFarmsNeedingProfilingCanStartAndFailedTicketsDoNotLeak() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(21));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         world.failingTicket = chunk(1, 0);
         assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), creator));
@@ -194,15 +214,15 @@ class ProfilingServiceTest {
 
     @Test
     void everyOutputIsProtectedAndMeasuredAndTheCreatorLearnsWhenOneFills() {
-        var first = output(50);
-        var second = output(80); // chunk (5, 0)
+        var first = output(6);
+        var second = new OutputContainer(OutputContainer.Type.CHEST, Set.of(block(6, 0, 2)));
         var farm = registry.register(creator, "Mobs", new Cuboid(block(0, 0, 0), block(5, 5, 5)),
                 List.of(first, second));
         world.contents.put(first, new OutputSnapshot(Map.of(), false));
         world.contents.put(second, new OutputSnapshot(Map.of(Material.BONE, 3), false));
         service.start(farm.id(), creator);
         assertEquals(List.of(first, second), world.locked);
-        assertEquals(Set.of(chunk(0, 0), chunk(3, 0), chunk(5, 0)), world.tickets);
+        assertEquals(chunks(-1, 0), world.tickets);
 
         world.produce(first, Material.ARROW, 20);
         world.produce(second, Material.BONE, 10);
@@ -224,7 +244,7 @@ class ProfilingServiceTest {
 
     @Test
     void outputFullBeforeProfilingStartsIsReportedRightAway() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(Material.DIRT, 1728), true));
         service.start(farm.id(), creator);
         var messages = world.messages.get(creator);
@@ -234,7 +254,7 @@ class ProfilingServiceTest {
 
     @Test
     void remainingTicksCountDownToTheEndOfProfilingForTheCreatorOnly() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         assertThrows(IllegalArgumentException.class, () -> service.remainingTicks(farm.id(), creator),
                 "not profiling yet");
@@ -250,7 +270,7 @@ class ProfilingServiceTest {
 
     @Test
     void farmSwitchedOnLongAfterProfilingStartedGetsItsFullRate() {
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
         tick(1500); // the creator has not switched the farm on yet
@@ -278,7 +298,7 @@ class ProfilingServiceTest {
         };
         var observed = new ProfilingService(registry, world, ProfilingSettings.DEFAULT, new ChunkTickets(world),
                 farmId -> false, listener);
-        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
         world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
 
         observed.start(farm.id(), creator);
@@ -307,6 +327,12 @@ class ProfilingServiceTest {
 
     private static BlockPosition block(int x, int y, int z) {
         return new BlockPosition(WORLD, x, y, z);
+    }
+
+    private static Set<ChunkPosition> chunks(int... xs) {
+        var result = new HashSet<ChunkPosition>();
+        for (int x : xs) for (int z : new int[] { -1, 0 }) result.add(chunk(x, z));
+        return Set.copyOf(result);
     }
 
     private static ChunkPosition chunk(int x, int z) {

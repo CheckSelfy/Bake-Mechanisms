@@ -89,7 +89,7 @@ public final class EntityNbtCheck {
         world.getBlockAt(239, 296, 79).setType(Material.FARMLAND, false);
         world.getBlockAt(239, 297, 79).setBlockData(plugin.getServer().createBlockData("minecraft:wheat[age=7]"), false);
         var registry = new FarmRegistry(FarmRegistry.DEFAULT_MAX_VOLUME);
-        var output = world.getBlockAt(256, 296, 0);
+        var output = world.getBlockAt(240, 296, 0);
         output.setType(Material.BARREL, false);
         var creator = UUID.randomUUID();
         var farm = registry.register(creator, region, new PaperOutputResolver().resolve(output));

@@ -76,6 +76,17 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                         "no natural output during warmup: " + farm.id() + " " + counts(farm));
                 pass("NATURAL_OUTPUT", farm.id() + " ticks=" + ticks + " output=" + counts(farm));
                 output(farm).clear();
+                // #25: warmup resources must not be counted as fresh production by a later profile.
+                eachBlock(farm, block -> {
+                    if (block.getState(false) instanceof Container container) container.getInventory().clear();
+                });
+                var start = farm.destination();
+                var end = farm.maximum();
+                for (var entity : lab.world().getNearbyEntities(new org.bukkit.util.BoundingBox(
+                        start[0], start[1], start[2], end[0] + 1, end[1] + 1, end[2] + 1))) {
+                    if (entity instanceof org.bukkit.entity.Item) entity.remove();
+                    else if (entity instanceof org.bukkit.inventory.InventoryHolder holder) holder.getInventory().clear();
+                }
                 register(farm);
                 command("profile --id " + ids.get(farm.id()));
             }

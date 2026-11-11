@@ -6,8 +6,9 @@ package io.github.checkselfy.bakemechanisms.profiling;
  * @param rejectShortUsefulSegment feature flag for the minimal useful segment check
  */
 public record ProfilingSettings(int snapshotInterval, long minUsefulTicks, boolean rejectShortUsefulSegment) {
-    /** Fixed in the MVP. */
+    /** Short and long durations selected by the profiling commands, independently for each session. */
     public static final int DURATION_TICKS = 3600;
+    public static final int LONG_DURATION_TICKS = 36000;
     public static final ProfilingSettings DEFAULT = new ProfilingSettings(20, 600, false);
 
     public ProfilingSettings {
