@@ -204,7 +204,11 @@ final class MobFarmReview implements Listener {
                 snapshotBaseline(farm);
                 command("stasis --id " + farm.id);
                 require(stored(farm).farm().state() == State.STASIS, "mob farm failed to enter stasis");
-                each(farm, block -> require(block.getType() == Material.BEDROCK, "mob mechanism not entirely filler"));
+                var region = stored(farm).farm().mechanism();
+                var filler = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region,
+                        io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
+                each(farm, block -> require(block.getType() == filler.material(block.getX()-region.min().x(),
+                        block.getY()-region.min().y(),block.getZ()-region.min().z()), "mob mechanism not entirely filler"));
             }
             require(world.getEntities().stream().allMatch(e -> e instanceof Player), "original entities survived beside emulation");
             pass("MOB_STASIS", "spawners, wolves and live mobs snapshotted; complete filler; only emulation remains; accounting duration=" + emulationTicks
