@@ -53,6 +53,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
     private boolean shortProfileOnly;
     private final Map<UUID, Map<Material, Integer>> before = new java.util.HashMap<>();
     private EmulationState plateau;
+    private long plateauTick;
     private final Map<UUID, Map<Material, Integer>> firstProduction = new java.util.HashMap<>();
     private final Map<UUID, Long> firstProductionTick = new java.util.HashMap<>();
 
@@ -242,11 +243,24 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 next(5);
             }
             case 5 -> {
-                if (elapsed == 200) {
-                    plateau = farm(blockFarm).emulation().orElseThrow();
-                    check(!plateau.outputs().getFirst().buffer().isEmpty(), "full output did not accumulate bounded pending production");
+                // The first whole pending item appears after a time set by the natural profile and the leftover
+                // fraction, so wait for it with a profile-derived deadline instead of a fixed 200 ticks.
+                if (plateau == null) {
+                    if (elapsed < 200 || elapsed % 20 != 0) return;
+                    var state = farm(blockFarm).emulation().orElseThrow();
+                    if (state.outputs().getFirst().buffer().isEmpty()) {
+                        double slowest = farm(blockFarm).farm().profile().ratesPer20Ticks().values().stream()
+                                .mapToDouble(Double::doubleValue).min().orElseThrow();
+                        long deadline = 200 + (long) Math.ceil(20 / slowest) + 40;
+                        check(elapsed <= deadline, "full output did not accumulate bounded pending production in "
+                                + elapsed + " ticks (one item takes at most " + deadline + ")");
+                        return;
+                    }
+                    plateau = state;
+                    plateauTick = elapsed;
+                    return;
                 }
-                if (elapsed < 3800) return;
+                if (elapsed < plateauTick + 3600) return;
                 check(plateau.equals(farm(blockFarm).emulation().orElseThrow()), "production continued with blocked buffer");
                 check(blocks.getEntitiesByClass(org.bukkit.entity.Item.class).isEmpty(), "full output dropped items into world");
                 pass("C08_PAUSE", "full output: identical buffer/fractions for 3600 ticks; no overflow drops");
