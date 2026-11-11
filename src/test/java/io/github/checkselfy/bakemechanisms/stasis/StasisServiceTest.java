@@ -84,6 +84,31 @@ class StasisServiceTest {
     }
 
     @Test
+    void uncertainOfflinePositionRejectsEntryAndRestoreBeforeAnySideEffects() {
+        var farm = ready();
+        var production = mock(StasisProduction.class);
+        var guarded = new StasisService(registry, world, store, production);
+        var denied = new IllegalArgumentException("Отключившийся игрок внутри кубоида");
+        when(world.hasPlayerInside(farm.mechanism())).thenThrow(denied);
+        assertSame(denied, assertThrows(IllegalArgumentException.class, () -> guarded.enter(farm.id(), creator)));
+        verify(world, never()).capture(any());
+        verifyNoInteractions(store, production);
+        doReturn(false).when(world).hasPlayerInside(farm.mechanism());
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        guarded.enter(farm.id(), creator);
+        clearInvocations(world, store, production);
+        when(world.hasPlayerInside(farm.mechanism())).thenThrow(denied);
+        assertSame(denied, assertThrows(IllegalArgumentException.class, () -> guarded.restore(farm.id(), creator)));
+        verify(world, never()).restore(any(), any());
+        verify(world, never()).fill(any());
+        verifyNoInteractions(store, production);
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+        doReturn(false).when(world).hasPlayerInside(farm.mechanism());
+        guarded.restore(farm.id(), creator);
+        assertEquals(State.NEEDS_PROFILING, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
     void onlyReadyCanEnterAndRepeatedEntryNeverOverwritesSnapshot() {
         var farm = ready();
         when(world.capture(farm)).thenReturn(new byte[] { 1 });

@@ -37,17 +37,24 @@ public final class PaperStasisWorld implements StasisWorld {
     private final Plugin plugin;
     private final PaperOutputResolver resolver;
     private final PaperEntitySnapshots entities;
+    private final OfflinePlayerSafety players;
 
     public PaperStasisWorld(Plugin plugin, PaperOutputResolver resolver) {
+        this(plugin, resolver, new OfflinePlayerSafety(plugin.getServer()));
+    }
+
+    public PaperStasisWorld(Plugin plugin, PaperOutputResolver resolver, OfflinePlayerSafety players) {
         this.plugin = plugin;
         this.resolver = resolver;
         this.entities = new PaperEntitySnapshots(plugin);
+        this.players = players;
     }
 
     @Override public boolean hasPlayerInside(Cuboid mechanism) {
         var world = world(mechanism);
         var box = PaperProfilingWorld.box(mechanism);
-        return world.getPlayers().stream().anyMatch(player -> player.getBoundingBox().overlaps(box));
+        return world.getPlayers().stream().anyMatch(player -> player.getBoundingBox().overlaps(box))
+                || players.hasPlayerInside(mechanism);
     }
 
     @Override public byte[] capture(MarkedFarm farm) {

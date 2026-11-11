@@ -17,6 +17,7 @@ import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
+import io.github.checkselfy.bakemechanisms.stasis.OfflinePlayerSafety;
 import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
 import io.github.checkselfy.bakemechanisms.stasis.StasisCommands;
 import io.github.checkselfy.bakemechanisms.stasis.StasisProduction;
@@ -36,6 +37,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class BakeMechanismsPlugin extends JavaPlugin {
     private ProfilingService profiling;
     private StasisEmulationService emulation;
+    private OfflinePlayerSafety playerSafety;
 
     @Override
     public void onEnable() {
@@ -98,7 +100,10 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
                 loggingStore(storage));
         profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining);
         // Snapshots share the farm directories with FarmStorage; the stasis manifest is authoritative for STASIS.
-        var stasis = new StasisService(registry, new PaperStasisWorld(this, resolver),
+        playerSafety = new OfflinePlayerSafety(getServer(), getDataFolder().toPath().resolve("offline-players.dat"));
+        var stasisWorld = new PaperStasisWorld(this, resolver, playerSafety);
+        getServer().getPluginManager().registerEvents(playerSafety, this);
+        var stasis = new StasisService(registry, stasisWorld,
                 new FileSnapshotStore(getDataFolder().toPath().resolve("farms"), getServer().getMinecraftVersion()),
                 production(emulation, stored));
         try {
@@ -136,6 +141,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (playerSafety != null) playerSafety.shutdown();
         // Unfinished profiling never survives a restart: drop protection and chunk tickets.
         if (profiling != null) profiling.cancelAll();
         // Production of farms in stasis is saved and continues after the restart.
