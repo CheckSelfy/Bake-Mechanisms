@@ -16,7 +16,15 @@ In your launcher choose **Minecraft Java Edition 26.3**. Open **Multiplayer → 
 
 The first join takes you to the farm lab. You do not need OP. If a server is already running on that address, join it instead of starting another copy.
 
-## Comparison copies
+## Mob farms
+
+The same launch command now also installs `skeleton` and `zombie` plots in existing labs on the next restart. Stop with `/farmlab stop`, then rerun `python scripts/farm-lab.py run --server run/farm-lab`. Existing crop farms and registrations are retained; occupied new plots are refused rather than overwritten.
+
+Use `/farmlab list`, `/farmlab visit skeleton` or `/farmlab visit zombie`. Skeleton selection is `(160,64,0)`–`(172,88,12)`, double output chest `(159,71,6)`. Zombie selection is `(224,64,0)`–`(237,78,13)`, double output chest `(238,67,2)`. `/farmlab corner <id> 1|2|output` works for both. The visit command places you at the AFK point within spawner range; visiting skeleton assigns its tame wolves to you so their native kills can produce armor. Stay at that point to keep it working.
+
+These use the [documented mob-fixture adaptations](../../test-worlds/ppl9-mobs/README.md), hard difficulty and accelerated native spawner delays; they are functional fixtures, not vanilla-yield benchmarks. No tick sprint is enabled in the manual lab. Before profiling, clear starting inventory stock and already-spawned equipped mobs as required by input protection.
+
+## Crop comparison copies
 
 Each original has a copy 32 blocks east: `cactus-control` starts at `(32,64,0)` with output `(34,65,-1)`; `cane-control` starts at `(96,64,0)` with output `(95,64,8)`. All four have independent mechanism/output chunks. Existing labs upgrade in place without replacing your originals or registrations; the controls initially copy their exact current blocks, crop ages, internal inventories and output contents. Outside water is cleaned up and the openings that caused the spills are fixed.
 
@@ -37,10 +45,10 @@ Crop growth and cactus item destruction are random. Matching mechanisms/starting
 
 1. Run `/farmlab setup`. This enables creative mode for preparing the selection, while your account remains non-OP. Run `/farmlab list` to see both mechanisms and output coordinates.
 2. Run `/bake wand`. Hold the Blaze Rod selector in your main hand.
-3. Run `/farmlab corner cactus 1`. Look at the **gold block** `(0,64,0)` and **left-click** it with the selector.
-4. Run `/farmlab corner cactus 2`. You will fly near the top of the tower. Look at the **lime concrete** `(9,103,8)` and **right-click** it with the selector.
-5. Run `/farmlab corner cactus output`. Look at the **barrel** `(2,65,-1)` and **Shift + right-click** it with the selector.
-6. Run `/bake register`. The result must be `NEEDS_PROFILING`. Copy the UUID from the message or `/bake list`. Below, replace `<UUID>` with that actual UUID; do not type the angle brackets.
+3. Run `/farmlab corner cactus 1`. Look at the **gold block** `(0,64,0)` and **left-click** it with the selector. The action bar above the hotbar now says the next left click selects the second corner.
+4. Run `/farmlab corner cactus 2`. You will fly near the top of the tower. Look at the **lime concrete** `(9,103,8)` and **left-click** it with the selector.
+5. Run `/farmlab corner cactus output`. Look at the **barrel** `(2,65,-1)` and **left-click** it with the selector. To pick a part again, right-click with the selector to open its menu and choose the mode first.
+6. Right-click with the selector and press **Зарегистрировать ферму** in the menu (or run `/bake register`). The result must be `NEEDS_PROFILING`. Copy the UUID from the message or `/bake list`. Below, replace `<UUID>` with that actual UUID; do not type the angle brackets.
 7. Run `/farmlab visit cactus` to stand **outside** the selected region. For survival-mode acceptance use `/farmlab survival` now. Stay near the farm so its plants receive random ticks. First verify it delivers cactus to the external barrel without adding items or using a probe. A few minutes with no output should be recorded as a failure/blocked measurement, rather than assumed successful.
 8. For a practical functional test, run `/farmlab fast` **before** profiling. This explicitly changes crop `randomTickSpeed` from 3 to 30, helping the original cane farm produce a batch within the fixed profiling window. Record that setting; it is not a vanilla-yield benchmark. Use `/farmlab normal` for ordinary crop growth, and do not change growth speed during a measurement. Now run `/bake profile --id <UUID>`. Stay nearby for **3600 server ticks**, about **3 minutes** at normal TPS. During profiling, try opening the output barrel, entering the region, and changing a block. Those actions should be blocked. Once finished, `/bake info --id <UUID>` should show `READY` and a positive cactus profile. A no-production rejection is a real result; record it and retry only after confirming the original farm works.
 9. From outside the region run `/bake stasis --id <UUID>`. The complete selected tower becomes a decorative green slime filler; the external barrel stays usable. Check `/bake info --id <UUID>` reports `STASIS`. Observe new cactus accumulating. Try breaking filler/output in survival, then use `/farmlab creative` and repeat. Both should be protected. Finish by returning outside with `/farmlab visit cactus`. For all nine visual acceptance sizes, use `/slimegallery 1..9`; see [slime filler testing](slime-filler.md).

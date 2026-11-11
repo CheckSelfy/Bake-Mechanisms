@@ -203,7 +203,7 @@ public final class EntityNbtCheck {
         var result = new ArrayList<Entity>();
         var types = new ArrayList<>(List.of(EntityType.COW, EntityType.ZOMBIE, EntityType.VILLAGER, EntityType.IRON_GOLEM,
                 EntityType.ARMOR_STAND, EntityType.MINECART, EntityType.CHEST_MINECART,
-                EntityType.HOPPER_MINECART, EntityType.ITEM, EntityType.BEE));
+                EntityType.HOPPER_MINECART, EntityType.ITEM, EntityType.BEE, EntityType.ARROW));
         PaperEntitySnapshots.supportedTypes().stream().sorted().filter(type -> !types.contains(type)).forEach(types::add);
         plugin.getLogger().info("LIVING_AUDIT_TYPES: " + types);
         for (int i = 0; i < types.size(); i++) {
@@ -224,6 +224,12 @@ public final class EntityNbtCheck {
             entity.getPersistentDataContainer().set(new NamespacedKey(plugin, "nbt_bytes"),
                     PersistentDataType.BYTE_ARRAY, new byte[] { 1, -3, 42 });
             entity.setVelocity(new Vector(0.031, 0.062, -0.015));
+            if (entity instanceof Arrow arrow) {
+                arrow.setDamage(3.25); arrow.setCritical(true); arrow.setPierceLevel(2);
+                arrow.setPickupStatus(AbstractArrow.PickupStatus.ALLOWED);
+                arrow.setShooter((LivingEntity) result.getFirst());
+                arrow.setBasePotionType(org.bukkit.potion.PotionType.POISON);
+            }
             if (entity instanceof LivingEntity living) {
                 living.setAI(false);
                 living.setRemoveWhenFarAway(false);
@@ -388,6 +394,12 @@ public final class EntityNbtCheck {
         put(values, "glowing", entity.isGlowing()); put(values, "name-visible", entity.isCustomNameVisible());
         put(values, "passengers", entity.getPassengers().stream().map(Entity::getUniqueId).toList());
         put(values, "vehicle", entity.getVehicle() == null ? null : entity.getVehicle().getUniqueId());
+        if (entity instanceof Arrow arrow) {
+            put(values, "arrow-damage", arrow.getDamage()); put(values, "arrow-critical", arrow.isCritical());
+            put(values, "arrow-pierce", arrow.getPierceLevel()); put(values, "arrow-pickup", arrow.getPickupStatus());
+            put(values, "arrow-shooter", arrow.getShooter() instanceof Entity source ? source.getUniqueId() : null);
+            put(values, "arrow-potion", arrow.getBasePotionType());
+        }
         if (entity instanceof LivingEntity living) {
             put(values, "health", living.getHealth()); put(values, "ai", living.hasAI());
             put(values, "scale", living.getAttribute(Attribute.SCALE).getBaseValue());

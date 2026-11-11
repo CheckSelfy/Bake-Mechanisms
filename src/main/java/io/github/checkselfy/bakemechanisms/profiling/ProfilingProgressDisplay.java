@@ -34,7 +34,7 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
     public void started(MarkedFarm farm, int durationTicks) {
         var player = server.getPlayer(farm.creatorId());
         if (player == null) return;
-        var bar = BossBar.bossBar(title(farm.id(), 0, durationTicks), 0.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
+        var bar = BossBar.bossBar(title(farm, 0, durationTicks), 0.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
         bars.put(farm.id(), new ActiveBar(player, bar, durationTicks));
         player.showBossBar(bar);
     }
@@ -46,7 +46,7 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
         if (active == null) return;
         float progress = (float) elapsedTicks / active.durationTicks();
         active.bar().progress(progress);
-        active.bar().name(title(farm.id(), elapsedTicks, active.durationTicks()));
+        active.bar().name(title(farm, elapsedTicks, active.durationTicks()));
     }
 
     @Override
@@ -71,10 +71,11 @@ public final class ProfilingProgressDisplay implements ProfilingService.Progress
         if (active != null) active.player().hideBossBar(active.bar());
     }
 
-    private static Component title(UUID farmId, long elapsedTicks, int durationTicks) {
+    /** The farm's name when it has one, otherwise its UUID; the name is read on every update, so a rename shows. */
+    private static Component title(MarkedFarm farm, long elapsedTicks, int durationTicks) {
         long remainingTicks = durationTicks - elapsedTicks;
         int percent = (int) (elapsedTicks * 100 / durationTicks);
-        return Component.text("Ферма " + farmId + " · " + percent + "% · прошло " + time(elapsedTicks)
+        return Component.text("Ферма " + (farm.name() != null ? farm.name() : farm.id()) + " · " + percent + "% · прошло " + time(elapsedTicks)
                 + " · осталось " + time(remainingTicks));
     }
 

@@ -1,5 +1,7 @@
 # Correctness-review #11 — 2026-11-11
 
+**Последующее исправление и расширение проверок:** [acceptance follow-up](acceptance-2026-11-11.md). Оно закрывает значительную часть перечисленных ниже автоматизируемых пробелов; этот исходный отчёт и его числа сохранены как история предыдущего запуска.
+
 Источник: [GitHub #11](https://github.com/CheckSelfy/Bake-Mechanisms/issues/11), [MVP](../../.scratch/bake-mechanisms-mvp/spec.md), [сценарии C01–C12](scenarios.md). Автоматизация и её границы: [correctness-review.md](correctness-review.md).
 
 Результаты и все оставшиеся расхождения опубликованы в [комментарии к #11](https://github.com/CheckSelfy/Bake-Mechanisms/issues/11#issuecomment-6796437048). Тикет не закрыт.

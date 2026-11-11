@@ -53,10 +53,22 @@ public final class CorrectnessPlugin extends JavaPlugin {
     private boolean shortProfileOnly;
     private final Map<UUID, Map<Material, Integer>> before = new java.util.HashMap<>();
     private EmulationState plateau;
+    private long plateauStarted;
+    private boolean openRestart;
+    private Map<Material, Integer> restartCounts;
+    private List<Map<Material, Integer>> restoredBuffer;
     private final Map<UUID, Map<Material, Integer>> firstProduction = new java.util.HashMap<>();
     private final Map<UUID, Long> firstProductionTick = new java.util.HashMap<>();
 
     @Override public void onEnable() {
+        if (Files.exists(Path.of("mob-farms-only"))) {
+            new MobFarmReview(this).start();
+            return;
+        }
+        if (Files.exists(Path.of("client-acceptance-only"))) {
+            new ClientAcceptanceReview(this).start();
+            return;
+        }
         root = getServer().getPluginManager().getPlugin("BakeMechanisms").getDataFolder().toPath().resolve("farms");
         storage = new FarmStorage(root);
         resumed = Files.exists(getDataFolder().toPath().resolve("restart.yml"));
@@ -164,6 +176,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 command(a, "profile --id " + blockFarm);
                 command(a, "profile --id " + entityFarm);
                 state(blockFarm, State.PROFILING); state(entityFarm, State.PROFILING);
+                check(!b.teleport(new Location(blocks, 2.5, 65, 2.5)), "profiling allowed teleport into mechanism");
                 var breakEvent = new BlockBreakEvent(blocks.getBlockAt(0, 63, 0), b);
                 getServer().getPluginManager().callEvent(breakEvent);
                 check(breakEvent.isCancelled(), "profiling permits block break");
@@ -184,6 +197,13 @@ public final class CorrectnessPlugin extends JavaPlugin {
                     sword.setItemMeta(meta);
                     // Controlled supplemental input, never counted as natural egg production.
                     output(entities).addItem(sword);
+                    var armor = new ItemStack(Material.DIAMOND_CHESTPLATE);
+                    var armorMeta = (Damageable) armor.getItemMeta();
+                    armorMeta.setDamage(150);
+                    armorMeta.displayName(Component.text("review-normalization-armor"));
+                    armorMeta.addEnchant(org.bukkit.enchantments.Enchantment.PROTECTION, 3, true);
+                    armor.setItemMeta(armorMeta);
+                    output(entities).addItem(armor);
                 }
                 if (elapsed < 3600) return;
                 state(blockFarm, State.READY); state(entityFarm, State.READY);
@@ -201,6 +221,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 pass("C05_OCCUPIED", "player inside: command refused, READY retained, player not teleported");
                 for (var id : List.of(blockFarm, entityFarm)) {
                     before.put(id, counts(world(id)));
+                    if (id.equals(blockFarm)) snapshotSaveFailure();
                     command(a, "stasis --id " + id); state(id, State.STASIS);
                     filler(world(id));
                     check(tickets(world(id)) == 1, "stasis must hold only output chunk");
@@ -229,6 +250,8 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 for (var id : List.of(blockFarm, entityFarm)) verifyProduction(id, 4000, before.get(id), empty());
                 check(java.util.Arrays.stream(output(entities).getContents()).anyMatch(item -> item != null
                         && item.getType() == Material.DIAMOND_SWORD && !item.hasItemMeta()), "no normalized sword");
+                check(java.util.Arrays.stream(output(entities).getContents()).anyMatch(item -> item != null
+                        && item.getType() == Material.DIAMOND_CHESTPLATE && !item.hasItemMeta()), "no normalized armor");
                 check(blocks.getEntitiesByClass(ExperienceOrb.class).isEmpty()
                         && entities.getEntitiesByClass(ExperienceOrb.class).isEmpty(), "emulation created XP");
                 check(a.getTotalExperience() == creatorExperience && b.getTotalExperience() == otherExperience,
@@ -242,11 +265,18 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 next(5);
             }
             case 5 -> {
-                if (elapsed == 200) {
+                if (plateau == null) {
+                    var progress = farm(blockFarm).emulation().orElseThrow();
+                    // Natural profiles may need more than 200 ticks to produce a whole item.
+                    if (progress.outputs().getFirst().buffer().isEmpty()) {
+                        check(elapsed < 7200, "full output did not accumulate bounded pending production");
+                        return;
+                    }
                     plateau = farm(blockFarm).emulation().orElseThrow();
-                    check(!plateau.outputs().getFirst().buffer().isEmpty(), "full output did not accumulate bounded pending production");
+                    plateauStarted = elapsed;
+                    pass("C08_BLOCKED", "pending production reached full output after " + elapsed + " ticks");
                 }
-                if (elapsed < 3800) return;
+                if (elapsed - plateauStarted < 3600) return;
                 check(plateau.equals(farm(blockFarm).emulation().orElseThrow()), "production continued with blocked buffer");
                 check(blocks.getEntitiesByClass(org.bukkit.entity.Item.class).isEmpty(), "full output dropped items into world");
                 pass("C08_PAUSE", "full output: identical buffer/fractions for 3600 ticks; no overflow drops");
@@ -257,6 +287,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 if (elapsed < 200) return;
                 var checkpoint = new YamlConfiguration();
                 checkpoint.set("blocks", blockFarm.toString()); checkpoint.set("entities", entityFarm.toString());
+                checkpoint.set("phase", "blocked");
                 Files.createDirectories(getDataFolder().toPath());
                 checkpoint.save(getDataFolder().toPath().resolve("restart.yml").toFile());
                 Files.copy(root.resolve(blockFarm.toString()).resolve("emulation.dat"),
@@ -266,7 +297,11 @@ public final class CorrectnessPlugin extends JavaPlugin {
             }
             case 7 -> {
                 if (elapsed < 200) return;
-                verifyProduction(blockFarm, 200, Map.of(), plateau);
+                verifyProduction(blockFarm, 200, restartCounts, plateau);
+                if (!openRestart) {
+                    saveOpenRestart();
+                    return;
+                }
                 pass("C08_RESUME", "freed output: pending buffer delivered and exact production resumed");
                 command(a, "unstasis --id " + blockFarm); restored(blockFarm);
                 pass("C09_BLOCKS", "cactus, hoppers, internal marker restored after process restart");
@@ -282,29 +317,62 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 }
                 if (elapsed < 3600) return;
                 state(blockFarm, State.READY); state(entityFarm, State.READY);
+                // Profiling setup deliberately removed this disconnected test item. No second block
+                // snapshot is taken on the invalidation path, so restore the fixture baseline explicitly.
+                restoreMarker(blocks);
                 a.getInventory().clear();
                 var edit = new BlockBreakEvent(blocks.getBlockAt(0, 63, 0), a);
                 getServer().getPluginManager().callEvent(edit);
                 state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "stasis --id " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "stasis --id " + entityFarm); state(entityFarm, State.STASIS);
-                command(a, "unstasis --id " + entityFarm); restored(entityFarm);
-                for (var id : List.of(blockFarm, entityFarm)) {
-                    command(b, "unregister --id " + id); command(b, "unregister --id " + id + " confirm");
-                    check(Files.exists(root.resolve(id.toString())), "noncreator deleted farm");
-                    command(a, "unregister --id " + id + " confirm");
-                    check(Files.exists(root.resolve(id.toString())), "confirmation without request deleted farm");
-                    command(a, "unregister --id " + id);
-                    check(Files.exists(root.resolve(id.toString())), "unconfirmed request deleted farm");
-                    command(a, "unregister --id " + id + " confirm");
-                    check(!Files.exists(root.resolve(id.toString())), "confirmed delete retained farm files");
+                fillOutput(entities);
+                next(12);
+            }
+            case 9 -> {
+                var removed = extractionInventory(blocks).getItem(0);
+                if (removed == null || removed.getAmount() < 64) {
+                    check(elapsed < 2000, "native hopper did not extract a stack from the stasis output");
+                    return;
                 }
-                check(storage.loadAll().isEmpty(), "registrations remain after delete");
-                check(tickets(blocks) == 0 && tickets(entities) == 0, "delete leaked chunk tickets");
-                pass("C11", "repeat profile/stasis/restore; READY edit invalidation; creator-only confirmed deletion; all files/tickets released");
-                console("bakefixtures check");
-                pass("CORRECTNESS_PASSED", "headless automated subset complete; synthetic input boundaries documented");
-                getServer().shutdown(); next(99);
+                check(removed.getType() == Material.STONE, "native hopper extracted unexpected baseline item");
+                pass("C08_HOPPER", "native hopper extracted a full stack from protected stasis output; ticks=" + elapsed);
+                removeExtractor(blocks);
+                output(blocks).clear();
+                plateau = farm(blockFarm).emulation().orElseThrow();
+                restartCounts = Map.of();
+                next(7);
+            }
+            case 12 -> {
+                // The first update (and persisted state) may not exist on the first tick of stasis.
+                var progress = farm(entityFarm).emulation().orElse(empty());
+                if (progress.outputs().getFirst().buffer().isEmpty()) {
+                    check(elapsed < 7200, "repeat entity cycle did not block production");
+                    return;
+                }
+                restoreFailureAndRetry();
+                restoredBuffer = farm(entityFarm).drain();
+                check(restoredBuffer.equals(progress.outputs().stream().map(EmulationState.OutputState::buffer).toList()),
+                        "restore lost or changed the pending production buffer");
+                check(farm(entityFarm).emulation().isEmpty(), "restored farm retained production fractions");
+                next(13);
+            }
+            case 13 -> {
+                if (elapsed < 200) return;
+                check(farm(entityFarm).drain().equals(restoredBuffer), "full restored output changed pending buffer");
+                pass("C09_FULL_RESTORE", "original restored with full output; exact pending buffer retained for 200 ticks");
+                output(entities).clear();
+                next(14);
+            }
+            case 14 -> {
+                if (elapsed < 20) return;
+                check(!farm(entityFarm).draining(), "restored pending buffer did not finish draining");
+                for (var entry : restoredBuffer.getFirst().entrySet()) {
+                    check(counts(entities).getOrDefault(entry.getKey(), 0).equals(entry.getValue()), "restored buffer duplicated or lost");
+                }
+                check(tickets(entities) == 0, "restored drain leaked chunk tickets");
+                pass("C09_DRAIN", "restored buffer delivered exactly once after freeing space; no new emulation");
+                finishReview();
             }
             default -> { }
         }
@@ -314,6 +382,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
         var checkpoint = YamlConfiguration.loadConfiguration(getDataFolder().toPath().resolve("restart.yml").toFile());
         blockFarm = UUID.fromString(checkpoint.getString("blocks"));
         entityFarm = UUID.fromString(checkpoint.getString("entities"));
+        openRestart = checkpoint.getString("phase", "blocked").equals("open");
         state(blockFarm, State.STASIS); state(entityFarm, State.NEEDS_PROFILING);
         check(farm(entityFarm).farm().profile() == null, "restart retained unfinished profile");
         check(java.util.Arrays.equals(Files.readAllBytes(getDataFolder().toPath().resolve("emulation-before-restart.dat")),
@@ -321,9 +390,131 @@ public final class CorrectnessPlugin extends JavaPlugin {
         plateau = farm(blockFarm).emulation().orElseThrow();
         filler(blocks);
         check(tickets(blocks) == 1 && tickets(entities) == 0, "restart tickets differ");
-        pass("C10", "real process restart: active filler/snapshot/profile/buffer/fractions retained; unfinished profile cancelled; blocked production progress unchanged");
-        output(blocks).clear();
-        next(7);
+        if (openRestart) {
+            restartCounts = new EnumMap<>(Material.class);
+            var saved = checkpoint.getConfigurationSection("output-counts");
+            if (saved != null) for (var key : saved.getKeys(false)) restartCounts.put(Material.valueOf(key), saved.getInt(key));
+            check(counts(blocks).equals(restartCounts), "restart credited offline output or changed saved inventory");
+            check(plateau.outputs().getFirst().buffer().isEmpty(), "open-output checkpoint unexpectedly paused");
+            pass("C10_OPEN", "unblocked output, nonzero fractions and inventory unchanged across offline interval; no wall-clock production");
+            next(7);
+        } else {
+            pass("C10", "real process restart: active filler/snapshot/profile/buffer/fractions retained; unfinished profile cancelled; blocked production progress unchanged");
+            enableExtractor(blocks);
+            next(9);
+        }
+    }
+
+    private void saveOpenRestart() throws Exception {
+        var checkpoint = YamlConfiguration.loadConfiguration(getDataFolder().toPath().resolve("restart.yml").toFile());
+        checkpoint.set("phase", "open");
+        counts(blocks).forEach((type, count) -> checkpoint.set("output-counts." + type.name(), count));
+        checkpoint.save(getDataFolder().toPath().resolve("restart.yml").toFile());
+        Files.copy(root.resolve(blockFarm.toString()).resolve("emulation.dat"),
+                getDataFolder().toPath().resolve("emulation-before-restart.dat"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        check(farm(blockFarm).emulation().orElseThrow().outputs().getFirst().buffer().isEmpty(), "unblocked restart has pending buffer");
+        pass("OPEN_RESTART_READY", "output has free space; production active; snapshot progress and inventory saved");
+        getServer().shutdown(); next(99);
+    }
+
+    private void enableExtractor(World world) {
+        world.getBlockAt(16, 62, 7).setType(Material.BARREL, false);
+        world.getBlockAt(16, 63, 7).setType(Material.HOPPER, false);
+        var data = (org.bukkit.block.data.type.Hopper) world.getBlockAt(16, 63, 7).getBlockData();
+        data.setFacing(BlockFace.DOWN);
+        data.setEnabled(true);
+        world.getBlockAt(16, 63, 7).setBlockData(data, false);
+    }
+
+    private org.bukkit.inventory.Inventory extractionInventory(World world) {
+        return ((Container) world.getBlockAt(16, 62, 7).getState()).getInventory();
+    }
+
+    private void removeExtractor(World world) {
+        for (int y : new int[] {63, 62}) {
+            ((Container) world.getBlockAt(16, y, 7).getState()).getInventory().clear();
+            world.getBlockAt(16, y, 7).setType(Material.AIR, false);
+        }
+    }
+
+    private void fillOutput(World world) {
+        for (int i = 0; i < output(world).getSize(); i++) output(world).setItem(i, new ItemStack(Material.STONE, 64));
+    }
+
+    private void snapshotSaveFailure() throws Exception {
+        var obstruction = root.resolve(blockFarm.toString()).resolve("snapshot.bin");
+        check(!Files.exists(obstruction), "save-failure test requires a fresh snapshot path");
+        Files.createDirectory(obstruction);
+        Files.writeString(obstruction.resolve("review-obstruction"), "disposable test server only");
+        try {
+            command(a, "stasis --id " + blockFarm);
+            state(blockFarm, State.READY);
+            check(blocks.getBlockAt(2, 66, 2).getType() == Material.CACTUS, "failed snapshot save changed the original");
+            check(!Files.exists(obstruction.resolveSibling("stasis.yml")), "failed save published an active snapshot");
+        } finally {
+            Files.delete(obstruction.resolve("review-obstruction"));
+            Files.delete(obstruction);
+        }
+        pass("C12_SAVE_COMMAND", "production stasis command refused actual filesystem write failure before changing world");
+    }
+
+    private void restoreFailureAndRetry() throws Exception {
+        var directory = root.resolve(entityFarm.toString());
+        var manifest = directory.resolve("stasis.yml");
+        var backup = directory.resolve("stasis-review-backup.yml");
+        var progress = farm(entityFarm).emulation().orElseThrow();
+        var snapshot = Files.readAllBytes(directory.resolve("snapshot.bin"));
+        // Preserve the original manifest; only its disposable pathname is obstructed. Native restore
+        // succeeds, then real manifest deactivation fails and must roll the complete world back.
+        Files.move(manifest, backup);
+        Files.createDirectory(manifest);
+        Files.writeString(manifest.resolve("review-obstruction"), "disposable test server only");
+        try {
+            command(a, "unstasis --id " + entityFarm);
+            state(entityFarm, State.STASIS);
+            filler(entities);
+            check(chickens() == 0, "failed restore rollback left original entities beside emulation");
+            check(farm(entityFarm).emulation().orElseThrow().equals(progress), "failed restore lost production state");
+            check(java.util.Arrays.equals(snapshot, Files.readAllBytes(directory.resolve("snapshot.bin"))), "failed restore changed snapshot");
+        } finally {
+            Files.delete(manifest.resolve("review-obstruction"));
+            Files.delete(manifest);
+            Files.move(backup, manifest);
+        }
+        pass("C12_RESTORE_COMMAND", "actual deactivate failure rolled native restore back to filler; buffer/fractions/snapshot retained");
+        command(a, "unstasis --id " + entityFarm);
+        restored(entityFarm);
+        check(chickens() == 8, "restore retry lost or duplicated original chickens");
+    }
+
+    private void finishReview() {
+        for (var id : List.of(blockFarm, entityFarm)) {
+            command(b, "unregister --id " + id); command(b, "unregister --id " + id + " confirm");
+            check(Files.exists(root.resolve(id.toString())), "noncreator deleted farm");
+            command(a, "unregister --id " + id + " confirm");
+            check(Files.exists(root.resolve(id.toString())), "confirmation without request deleted farm");
+            command(a, "unregister --id " + id);
+            check(Files.exists(root.resolve(id.toString())), "unconfirmed request deleted farm");
+            command(a, "unregister --id " + id + " confirm");
+            check(!Files.exists(root.resolve(id.toString())), "confirmed delete retained farm files");
+        }
+        check(storage.loadAll().isEmpty(), "registrations remain after delete");
+        check(tickets(blocks) == 0 && tickets(entities) == 0, "delete leaked chunk tickets");
+        pass("C11", "repeat profile/stasis/restore; READY edit invalidation; creator-only confirmed deletion; all files/tickets released");
+        var replies = new StringBuilder();
+        var sender = getServer().createCommandSender(message -> replies.append(
+                net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(message)).append('\n'));
+        check(getServer().dispatchCommand(sender, "bakefixtures check"), "fixture check not dispatched");
+        check(replies.toString().contains("FIXTURES_CHECK_OK") && !replies.toString().contains("FIXTURES_ERROR"),
+                "final fixture validation failed: " + replies);
+        pass("CORRECTNESS_PASSED", "automated lifecycle and fixture validation complete; client rendering boundaries documented");
+        getServer().shutdown(); next(99);
+    }
+
+    private void restoreMarker(World world) {
+        var marker = new ItemStack(Material.STONE, 3);
+        marker.editMeta(meta -> meta.displayName(Component.text("snapshot-marker")));
+        ((Container) world.getBlockAt(0, 65, 0).getState()).getInventory().setItem(0, marker);
     }
 
     private UUID auxiliary(int x) {
@@ -339,9 +530,10 @@ public final class CorrectnessPlugin extends JavaPlugin {
         a.getInventory().clear();
         command(a, "wand");
         a.getInventory().setHeldItemSlot(0);
-        interact(world, Action.RIGHT_CLICK_BLOCK, x + 15, 70, 15, false);
+        // The wand moves on by itself: first corner, second corner, then the output container.
+        interact(world, Action.LEFT_CLICK_BLOCK, x + 15, 70, 15, false);
         interact(world, Action.LEFT_CLICK_BLOCK, x, 63, 0, false);
-        interact(world, Action.RIGHT_CLICK_BLOCK, x + 16, 64, 7, true);
+        interact(world, Action.LEFT_CLICK_BLOCK, x + 16, 64, 7, false);
         command(a, "register");
         var found = storage.loadAll().stream().filter(f -> f.farm().mechanism().min().worldId().equals(world.getUID())
                 && f.farm().mechanism().min().x() == x).toList();

@@ -90,6 +90,8 @@ def check_or_review(server, headless, port=25566):
         expected = len(json.loads((ROOT / 'test-worlds/ppl9/farms.json').read_text())['farms'])
         if f'FARM_LAB_READY farms={expected}' not in log or 'Error occurred while enabling' in log:
             raise RuntimeError('Farm lab did not initialize; see logs/latest.log')
+        if 'FARM_LAB_MOBS_READY farms=2' not in log:
+            raise RuntimeError('Manual mob plots did not initialize; see logs/latest.log')
         if headless:
             with (server / 'clients.log').open('w', encoding='utf-8') as output:
                 bots = subprocess.Popen([sys.executable, str(ROOT / 'scripts' / 'correctness-clients.py'), '--port', str(port)],
@@ -115,6 +117,8 @@ def check_or_review(server, headless, port=25566):
                 console.process.wait(timeout=120)
         else:
             console.send('farmlab list')
+            console.send('farmlab check-mobs')
+            console.wait('FARM_LAB_MOBS_CHECK_OK')
     finally:
         if bots is not None:
             bots.terminate()

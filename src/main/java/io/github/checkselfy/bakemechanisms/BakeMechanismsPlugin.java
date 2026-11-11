@@ -8,6 +8,8 @@ import io.github.checkselfy.bakemechanisms.emulation.PaperEmulationWorld;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import io.github.checkselfy.bakemechanisms.marking.FarmRemoval;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
+import io.github.checkselfy.bakemechanisms.marking.DialogTextPrompt;
+import io.github.checkselfy.bakemechanisms.marking.FarmScreens;
 import io.github.checkselfy.bakemechanisms.marking.MarkingController;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
 import io.github.checkselfy.bakemechanisms.marking.ReadyMechanismWatcher;
@@ -33,8 +35,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import org.bukkit.Material;
+import org.bukkit.command.TabExecutor;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class BakeMechanismsPlugin extends JavaPlugin {
@@ -134,13 +139,23 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         }
         // Snapshot files share the farm directory, and storage refuses to delete one with an active snapshot.
         var removal = new FarmRemoval(registry, storage::delete, emulation::stopDraining, System::currentTimeMillis);
-        var marking = new MarkingController(this, registry, resolver, profiling, removal);
+        var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
+        // Farm screens run /bake subcommands, whose executor wraps the marking controller that opens the screens.
+        var executor = new AtomicReference<TabExecutor>();
+        Consumer<Runnable> nextTick = task -> getServer().getScheduler().runTask(this, task);
+        var prompt = new DialogTextPrompt(nextTick);
+        var farmScreens = new FarmScreens(registry,
+                (player, args) -> executor.get().onCommand(player, command, command.getName(), args), getServer(),
+                prompt, nextTick);
+        var marking = new MarkingController(this, registry, resolver, profiling, removal, farmScreens::openList,
+                prompt);
         var commands = new StasisCommands(marking, registry, stasis, getLogger(),
                 task -> getServer().getScheduler().runTaskLater(this, task, 1L));
-        var command = Objects.requireNonNull(getCommand("bake"), "bake command missing in plugin.yml");
+        executor.set(commands);
         command.setExecutor(commands);
         command.setTabCompleter(commands);
         getServer().getPluginManager().registerEvents(marking, this);
+        getServer().getPluginManager().registerEvents(farmScreens, this);
         getServer().getPluginManager().registerEvents(progressDisplay, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
         getServer().getPluginManager().registerEvents(new ProfilingTransportProtection(profiling), this);
@@ -150,6 +165,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             profiling.tick();
             emulation.tick();
         }, 1L, 1L);
+        getServer().getScheduler().runTaskTimer(this, marking::refreshActionBars, 20L, 20L);
         getLogger().info("Bake Mechanisms enabled");
     }
 

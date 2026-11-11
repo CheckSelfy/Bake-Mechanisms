@@ -82,6 +82,16 @@ class ProfilingProgressDisplayTest {
     }
 
     @Test
+    void namedFarmIsLabelledByNameWithoutItsId() {
+        var farm = registry.rename(farm(0).id(), creator, "Iron");
+        display.started(farm);
+        var bar = shownBar();
+        assertEquals(Component.text("Ферма Iron · 0% · прошло 0 с · осталось 3 мин 0 с"), bar.name());
+        display.progressed(registry.rename(farm.id(), creator, "Gold"), 1800);
+        assertEquals(Component.text("Ферма Gold · 50% · прошло 1 мин 30 с · осталось 1 мин 30 с"), bar.name());
+    }
+
+    @Test
     void quitRemovesBarWithoutRecreatingItOnLaterTicks() {
         var farm = farm(0);
         display.started(farm);
