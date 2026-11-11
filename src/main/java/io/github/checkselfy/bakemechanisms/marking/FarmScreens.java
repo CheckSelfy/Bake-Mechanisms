@@ -21,7 +21,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
  * The screen of a player's farms. Each farm is a group of four slots: a block showing its state (left click: details
  * in chat; right click: rename in a text field), the operation its state allows (profile, sprint, stasis or
  * unstasis), long profiling, and deletion or cancelling the profiling; a slot whose action the state does not allow
- * stays empty, so every action keeps its column. The bottom row gives the wand and lists the farms in chat. Operations run the {@code /bake}
+ * stays empty, so every action keeps its column. Operations run the {@code /bake}
  * subcommands as the player, so their rules, creator checks and messages stay those of the commands. Deletion is
  * confirmed by a second click on the same slot. Server thread only.
  */
@@ -31,8 +31,6 @@ public final class FarmScreens implements Listener {
     private static final int[] GROUP_COLUMNS = { 0, 5 };
     static final int PREVIOUS_SLOT = 45;
     static final int NEXT_SLOT = 53;
-    static final int WAND_SLOT = 48;
-    static final int LIST_SLOT = 50;
     private static final String CONFIRM = "confirm";
 
     /** Runs a {@code /bake} subcommand as the player. */
@@ -150,14 +148,10 @@ public final class FarmScreens implements Listener {
     private FarmScreen page(Player player, FarmScreen open, int page, UUID deleting) {
         var farms = registry.findByCreator(player.getUniqueId());
         var content = new FarmScreen();
-        content.exit(WAND_SLOT, new FarmScreen.Icon(Material.BLAZE_ROD, "Получить выделитель",
-                List.of("Для разметки новой фермы.")), () -> leave(player, "wand"));
         if (farms.isEmpty()) {
             return content.show(22, new FarmScreen.Icon(Material.PAPER, "Ферм пока нет",
-                    List.of("Возьмите выделитель внизу,", "затем ПКМ выделителем — меню разметки.")));
+                    List.of("Получите выделитель: /bake wand,", "затем ПКМ выделителем — меню разметки.")));
         }
-        content.exit(LIST_SLOT, new FarmScreen.Icon(Material.BOOK, "Список в чат",
-                List.of("Все ваши фермы с профилями.")), () -> leave(player, "list"));
         int pages = (farms.size() + FARMS_PER_PAGE - 1) / FARMS_PER_PAGE;
         int current = Math.clamp(page, 0, pages - 1);
         int first = current * FARMS_PER_PAGE;

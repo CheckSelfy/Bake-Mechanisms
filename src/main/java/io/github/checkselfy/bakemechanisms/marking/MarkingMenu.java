@@ -27,12 +27,10 @@ public final class MarkingMenu extends ButtonMenu {
         FIRST_CORNER(10, Material.LIME_BANNER, "Выбрать первый угол"),
         SECOND_CORNER(11, Material.ORANGE_BANNER, "Выбрать второй угол"),
         OUTPUT(12, Material.CHEST, "Назначить выходной контейнер"),
-        SELECT_LOOKED(13, Material.ENDER_EYE, "Контейнер, на который смотрю"),
         REGISTER(14, Material.WRITABLE_BOOK, "Зарегистрировать ферму"),
         UNSELECT(15, Material.BARRIER, "Очистить выделение"),
         HELP(16, Material.BOOK, "Подсказка"),
-        FARMS(21, Material.BOOKSHELF, "Мои фермы"),
-        REGISTER_NAMED(23, Material.NAME_TAG, "Зарегистрировать с именем");
+        FARMS(22, Material.BOOKSHELF, "Мои фермы");
 
         private final int slot;
         private final Material icon;
@@ -87,19 +85,11 @@ public final class MarkingMenu extends ButtonMenu {
             }
             case REGISTER -> {
                 lore.add(selection.complete() ? "Всё выбрано." : "Не хватает: " + String.join(", ", selection.missing()));
-                lore.add("Имя можно задать потом: /bake rename.");
+                lore.add("Откроет поле для имени; можно оставить пустым.");
             }
             case UNSELECT -> lore.add("Сбрасывает углы и выходные контейнеры.");
             case HELP -> lore.add("Показывает порядок разметки в чате.");
             case FARMS -> lore.add("Состояние ваших ферм и действия с ними.");
-            case SELECT_LOOKED -> {
-                lore.add("Добавляет или убирает контейнер,");
-                lore.add("на который вы смотрите (до 6 блоков).");
-            }
-            case REGISTER_NAMED -> {
-                lore.add(selection.complete() ? "Всё выбрано." : "Не хватает: " + String.join(", ", selection.missing()));
-                lore.add("Откроет поле для ввода имени.");
-            }
         }
         if (button.mode() != null) {
             lore.add(button.mode() == selection.mode() ? "Текущий режим." : "Нажмите, затем ЛКМ по блоку.");

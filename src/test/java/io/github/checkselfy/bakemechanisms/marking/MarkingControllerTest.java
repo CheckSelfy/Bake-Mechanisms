@@ -430,6 +430,7 @@ class MarkingControllerTest {
         click(Action.LEFT_CLICK_BLOCK, output(1));
         openMenu();
         press(MarkingMenu.Button.REGISTER);
+        prompts.getFirst().accept("");
         assertEquals(1, registry.findByCreator(creator).size());
         verify(player).sendMessage(contains("Ферма зарегистрирована"));
     }
@@ -478,8 +479,7 @@ class MarkingControllerTest {
         openMenu();
         press(MarkingMenu.Button.REGISTER);
         press(MarkingMenu.Button.REGISTER);
-        assertEquals(1, registry.findByCreator(creator).size());
-        verify(player, never()).sendMessage(contains("Выберите оба угла"));
+        assertEquals(1, prompts.size(), "one name field for one press");
     }
 
     @Test
@@ -561,6 +561,7 @@ class MarkingControllerTest {
         assertEquals("Всё выбрано | ПКМ → «Зарегистрировать ферму»", lastActionBar());
         openMenu();
         press(MarkingMenu.Button.REGISTER);
+        prompts.getFirst().accept("");
         assertTrue(lastActionBar().contains("Ферма зарегистрирована"), lastActionBar());
     }
 
@@ -578,7 +579,7 @@ class MarkingControllerTest {
         holdWand();
         openMenu();
         press(MarkingMenu.Button.REGISTER);
-        assertTrue(lastActionBar().contains("чат"), "a long error points to chat: " + lastActionBar());
+        assertTrue(lastActionBar().startsWith("✖"), lastActionBar());
         var far = block(-29_999_999, 319);
         when(far.getZ()).thenReturn(-29_999_999);
         click(Action.LEFT_CLICK_BLOCK, far);
@@ -642,11 +643,11 @@ class MarkingControllerTest {
     }
 
     @Test
-    void registerWithNameAsksForTheNameInATextField() {
+    void registerAsksForAnOptionalNameInATextField() {
         selectCorners();
         selectOutput(1);
         openMenu();
-        press(MarkingMenu.Button.REGISTER_NAMED);
+        press(MarkingMenu.Button.REGISTER);
         assertEquals(1, prompts.size());
         assertTrue(registry.findByCreator(creator).isEmpty(), "nothing is registered before the name is entered");
         prompts.getFirst().accept("Iron");
@@ -654,22 +655,11 @@ class MarkingControllerTest {
     }
 
     @Test
-    void registerWithNameIsRefusedBeforeTheSelectionIsComplete() {
+    void registerIsRefusedBeforeTheSelectionIsComplete() {
         openMenu();
-        press(MarkingMenu.Button.REGISTER_NAMED);
+        press(MarkingMenu.Button.REGISTER);
         assertTrue(prompts.isEmpty());
         assertTrue(lastActionBar().startsWith("✖"), lastActionBar());
-    }
-
-    @Test
-    void menuSelectsTheContainerThePlayerLooksAt() {
-        selectCorners();
-        var container = output(1);
-        when(player.getTargetBlockExact(6)).thenReturn(container);
-        openMenu();
-        press(MarkingMenu.Button.SELECT_LOOKED);
-        run("register");
-        assertEquals(1, registry.findByCreator(creator).size());
     }
 
     private FarmRegistry.MarkedFarm farm(String name, int x) {

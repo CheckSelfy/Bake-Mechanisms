@@ -135,7 +135,9 @@ public final class MarkingController implements Listener, TabExecutor {
                 }
                 case "select-output" -> {
                     requireArguments(args, 1);
-                    selectLookedAt(player);
+                    Block block = player.getTargetBlockExact(6);
+                    if (block == null) throw new IllegalArgumentException("Посмотрите на выходной контейнер в пределах 6 блоков.");
+                    selectOutput(player, block);
                 }
                 case "register" -> {
                     if (args.length > 2) throw new IllegalArgumentException("/bake register [имя]");
@@ -340,8 +342,19 @@ public final class MarkingController implements Listener, TabExecutor {
                     notice(player, "Режим: " + button.mode().label() + " → ЛКМ по блоку", NamedTextColor.YELLOW);
                 }
                 case REGISTER -> {
-                    closeMenu(player);
-                    register(player, null);
+                    var missing = selection(player).missing();
+                    if (!missing.isEmpty()) {
+                        closeMenu(player);
+                        throw new IllegalArgumentException("Не хватает: " + String.join(", ", missing) + ".");
+                    }
+                    nextTick.accept(() -> prompt.ask(player, "Зарегистрировать ферму",
+                            "Имя (необязательно): латиница, цифры, _ и -", "", name -> {
+                                try {
+                                    register(player, name.isEmpty() ? null : name);
+                                } catch (IllegalArgumentException error) {
+                                    failed(player, error.getMessage());
+                                }
+                            }));
                 }
                 case UNSELECT -> {
                     unselect(player);
@@ -357,25 +370,6 @@ public final class MarkingController implements Listener, TabExecutor {
                     player.sendMessage(GUIDE);
                 }
                 case FARMS -> nextTick.accept(() -> openFarms.accept(player));
-                case SELECT_LOOKED -> {
-                    closeMenu(player);
-                    selectLookedAt(player);
-                }
-                case REGISTER_NAMED -> {
-                    var missing = selection(player).missing();
-                    if (!missing.isEmpty()) {
-                        closeMenu(player);
-                        throw new IllegalArgumentException("Не хватает: " + String.join(", ", missing) + ".");
-                    }
-                    nextTick.accept(() -> prompt.ask(player, "Зарегистрировать ферму",
-                            "Имя: латиница, цифры, _ и -", "", name -> {
-                                try {
-                                    register(player, name.isEmpty() ? null : name);
-                                } catch (IllegalArgumentException error) {
-                                    failed(player, error.getMessage());
-                                }
-                            }));
-                }
             }
         } catch (IllegalArgumentException error) {
             failed(player, error.getMessage());
@@ -444,13 +438,6 @@ public final class MarkingController implements Listener, TabExecutor {
 
     private static String capitalized(String text) {
         return Character.toUpperCase(text.charAt(0)) + text.substring(1);
-    }
-
-    /** Selects the container the player looks at, as {@code /bake select-output} does. */
-    private void selectLookedAt(Player player) {
-        Block block = player.getTargetBlockExact(6);
-        if (block == null) throw new IllegalArgumentException("Посмотрите на выходной контейнер в пределах 6 блоков.");
-        selectOutput(player, block);
     }
 
     /** Adds the container to the selection, or removes it when it is already selected. */

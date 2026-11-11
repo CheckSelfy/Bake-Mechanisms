@@ -153,25 +153,6 @@ class FarmScreensTest {
     }
 
     @Test
-    void bottomRowGivesTheWandAndListsFarmsInChat() {
-        farm(creator, "Iron", 0);
-        screens.openList(player);
-        assertEquals(Material.BLAZE_ROD, material(FarmScreens.WAND_SLOT));
-        assertEquals(Material.BOOK, material(FarmScreens.LIST_SLOT));
-        click(FarmScreens.WAND_SLOT);
-        screens.openList(player);
-        click(FarmScreens.LIST_SLOT);
-        assertEquals(List.of(List.of("wand"), List.of("list")), commands);
-    }
-
-    @Test
-    void emptyScreenStillGivesTheWand() {
-        screens.openList(player);
-        click(FarmScreens.WAND_SLOT);
-        assertEquals(List.of(List.of("wand")), commands);
-    }
-
-    @Test
     void stasisAndUnstasisRunTheirCommands() {
         var ready = ready(farm(creator, "Ready", 0));
         var stasis = ready(farm(creator, "Stasis", 1));
@@ -213,8 +194,9 @@ class FarmScreensTest {
     @Test
     void emptyListSaysHowToMarkAFarm() {
         screens.openList(player);
+        assertEquals(1, last().icons().size());
         assertTrue(last().icons().values().stream().anyMatch(icon -> icon.name().equals("Ферм пока нет")
-                && icon.lore().toString().contains("выделитель")));
+                && icon.lore().toString().contains("/bake wand")));
     }
 
     @Test
