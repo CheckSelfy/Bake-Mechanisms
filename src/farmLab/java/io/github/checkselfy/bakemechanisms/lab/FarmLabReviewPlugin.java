@@ -120,7 +120,12 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                 inventories.put(farm.id(), items);
                 command("stasis --id " + ids.get(farm.id()));
                 check(stored(farm).farm().state().name().equals("STASIS"), "stasis refused " + farm.id());
-                eachBlock(farm, b -> check(b.getType() == Material.BEDROCK, "incomplete filler"));
+                var min = farm.destination(); var max = farm.maximum();
+                var fillerRegion = new io.github.checkselfy.bakemechanisms.marking.Cuboid(
+                        new io.github.checkselfy.bakemechanisms.marking.BlockPosition(lab.world().getUID(),min[0],min[1],min[2]),
+                        new io.github.checkselfy.bakemechanisms.marking.BlockPosition(lab.world().getUID(),max[0],max[1],max[2]));
+                var generator = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(fillerRegion,io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
+                eachBlock(farm, b -> check(b.getType() == generator.material(b.getX()-min[0],b.getY()-min[1],b.getZ()-min[2]), "incomplete filler"));
             }
             next(3);
         } else if (phase == 3) {

@@ -25,6 +25,23 @@ class FileSnapshotStoreTest {
     @TempDir Path directory;
 
     @Test
+    void fillerPaletteAndOrientationSurviveReloadAndOlderManifestsKeepBedrock() throws Exception {
+        var old=snapshot();
+        var style=new FillerStyle(1,FillerStyle.Front.WEST,FillerStyle.Pattern.PANELS,5,
+                new FillerStyle.Palette(Material.YELLOW_STAINED_GLASS,Material.GREEN_STAINED_GLASS,
+                        Material.YELLOW_TERRACOTTA,Material.GREEN_CONCRETE,Material.BLACK_CONCRETE,Material.BLACK_STAINED_GLASS));
+        var saved=new SavedSnapshot(old.farm(),old.data(),style);
+        var store=new FileSnapshotStore(directory,"26.3"); store.save(saved);
+        assertEquals(style,new FileSnapshotStore(directory,"26.3").loadActive().getFirst().filler());
+        var manifest=directory.resolve(old.farm().id().toString()).resolve("stasis.yml");
+        var yaml=org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(manifest.toFile());
+        yaml.set("format-version",2); yaml.set("filler",null); yaml.save(manifest.toFile());
+        assertEquals(FillerStyle.LEGACY,store.loadActive().getFirst().filler());
+        yaml.set("format-version",3); yaml.save(manifest.toFile());
+        assertThrows(IOException.class,store::loadActive,"New manifests must not silently use defaults");
+    }
+
+    @Test
     void snapshotAndRecoveryMetadataSurviveNewStoreAndDeactivation() throws Exception {
         var snapshot = snapshot();
         var store = new FileSnapshotStore(directory, "26.3");

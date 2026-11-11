@@ -26,6 +26,20 @@ class StasisServiceTest {
     private final StasisService service = new StasisService(registry, world, store);
 
     @Test
+    void recoveryRollbackUsesTheSavedAppearanceRatherThanCurrentSettings() throws Exception {
+        var farm=ready();
+        var savedStyle=new FillerStyle(1,FillerStyle.Front.WEST,FillerStyle.Pattern.PANELS,5,FillerStyle.DEFAULT_PALETTE);
+        when(store.loadActive()).thenReturn(List.of(new SavedSnapshot(farm.with(State.STASIS,farm.profile()),new byte[]{1},savedStyle)));
+        var recovered=new StasisService(registry,world,store,StasisProduction.NONE,FillerStyle.DEFAULT);
+        recovered.recover();
+        doThrow(new IllegalStateException("restore failure")).when(world).restore(any(),any());
+        assertThrows(IllegalArgumentException.class,()->recovered.restore(farm.id(),creator));
+        verify(world).fill(farm.mechanism(),savedStyle);
+        verify(store,never()).deactivate(any());
+        assertEquals(State.STASIS,registry.requireCreator(farm.id(),creator).state());
+    }
+
+    @Test
     void snapshotIsSavedBeforeFirstWorldMutationAndRestoreInvalidatesProfile() throws Exception {
         var farm = ready();
         when(world.capture(farm)).thenReturn(new byte[] { 1, 2 });
@@ -34,7 +48,7 @@ class StasisServiceTest {
         order.verify(world).hasPlayerInside(farm.mechanism());
         order.verify(world).capture(farm);
         order.verify(store).save(any());
-        order.verify(world).fill(farm.mechanism());
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class));
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
         assertEquals(farm.profile(), registry.requireCreator(farm.id(), creator).profile());
         assertEquals(1, service.activeFarms().size());
@@ -53,11 +67,11 @@ class StasisServiceTest {
         when(world.capture(farm)).thenThrow(new IllegalStateException("unsupported"));
         assertThrows(IllegalArgumentException.class, () -> service.enter(farm.id(), creator));
         verifyNoInteractions(store);
-        verify(world, never()).fill(any());
+        verify(world, never()).fill(any(), any(FillerStyle.class));
         doReturn(new byte[] { 1 }).when(world).capture(farm);
         doThrow(new IOException("disk full")).when(store).save(any());
         assertThrows(IllegalArgumentException.class, () -> service.enter(farm.id(), creator));
-        verify(world, never()).fill(any());
+        verify(world, never()).fill(any(), any(FillerStyle.class));
         assertEquals(State.READY, registry.requireCreator(farm.id(), creator).state());
         assertTrue(service.activeFarms().isEmpty());
     }
@@ -79,7 +93,7 @@ class StasisServiceTest {
         when(world.capture(farm)).thenThrow(new PistonInMotionException());
         assertThrows(PistonInMotionException.class, () -> service.enter(farm.id(), creator));
         verifyNoInteractions(store);
-        verify(world, never()).fill(any());
+        verify(world, never()).fill(any(), any(FillerStyle.class));
         assertEquals(State.READY, registry.requireCreator(farm.id(), creator).state());
     }
 
@@ -100,7 +114,7 @@ class StasisServiceTest {
         when(world.hasPlayerInside(farm.mechanism())).thenThrow(denied);
         assertSame(denied, assertThrows(IllegalArgumentException.class, () -> guarded.restore(farm.id(), creator)));
         verify(world, never()).restore(any(), any());
-        verify(world, never()).fill(any());
+        verify(world, never()).fill(any(), any(FillerStyle.class));
         verifyNoInteractions(store, production);
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
         doReturn(false).when(world).hasPlayerInside(farm.mechanism());
@@ -120,7 +134,7 @@ class StasisServiceTest {
         assertThrows(IllegalArgumentException.class, () -> guarded.restore(farm.id(), creator));
         verify(world, never()).restore(any(), any());
         verify(world, never()).removeEntities(any(), any());
-        verify(world, never()).fill(any());
+        verify(world, never()).fill(any(), any(FillerStyle.class));
         verifyNoInteractions(production, store);
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
     }
@@ -141,7 +155,7 @@ class StasisServiceTest {
         service.enter(farm.id(), creator);
         doThrow(new IllegalStateException("partial restore")).when(world).restore(any(), any());
         assertThrows(IllegalArgumentException.class, () -> service.restore(farm.id(), creator));
-        verify(world, times(2)).fill(farm.mechanism());
+        verify(world, times(2)).fill(eq(farm.mechanism()), any(FillerStyle.class));
         verify(store, never()).deactivate(any());
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
         assertEquals(1, service.activeFarms().size());
@@ -158,7 +172,7 @@ class StasisServiceTest {
         doThrow(new IOException("read-only disk")).when(store).deactivate(farm.id());
         assertThrows(IllegalArgumentException.class, () -> service.restore(farm.id(), creator));
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
-        verify(world, times(2)).fill(farm.mechanism());
+        verify(world, times(2)).fill(eq(farm.mechanism()), any(FillerStyle.class));
     }
 
     @Test
@@ -166,7 +180,7 @@ class StasisServiceTest {
         var farm = ready();
         when(world.capture(farm)).thenReturn(new byte[] { 1 });
         doThrow(new IllegalStateException("world failure"), new IllegalStateException("rollback failure"))
-                .when(world).fill(any());
+                .when(world).fill(any(), any(FillerStyle.class));
         var error = assertThrows(IllegalArgumentException.class, () -> service.enter(farm.id(), creator));
         assertTrue(error.getMessage().contains("Снимок сохранён"));
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
@@ -235,7 +249,7 @@ class StasisServiceTest {
         when(world.capture(farm)).thenReturn(new byte[] { 1 });
         producing.enter(farm.id(), creator);
         var order = inOrder(world, production);
-        order.verify(world).fill(farm.mechanism());
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class));
         order.verify(production).start(registry.requireCreator(farm.id(), creator));
     }
 
@@ -245,7 +259,7 @@ class StasisServiceTest {
         var producing = new StasisService(registry, world, store, production);
         var farm = ready();
         when(world.capture(farm)).thenReturn(new byte[] { 1 });
-        doThrow(new IllegalStateException("world failure")).doNothing().when(world).fill(any());
+        doThrow(new IllegalStateException("world failure")).doNothing().when(world).fill(any(), any(FillerStyle.class));
         assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
         verify(production).start(registry.requireCreator(farm.id(), creator));
     }
@@ -257,7 +271,7 @@ class StasisServiceTest {
         var farm = ready();
         when(world.capture(farm)).thenReturn(new byte[] { 1 });
         doThrow(new IllegalStateException("world failure"), new IllegalStateException("rollback failure"))
-                .when(world).fill(any());
+                .when(world).fill(any(), any(FillerStyle.class));
         assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
         verify(production, never()).start(any());
         assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
@@ -291,7 +305,7 @@ class StasisServiceTest {
         assertThrows(IllegalArgumentException.class, () -> producing.restore(farm.id(), creator));
         var order = inOrder(world, production);
         order.verify(production).pause(farm.id());
-        order.verify(world).fill(farm.mechanism()); // the filler is back before production resumes
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class)); // the filler is back before production resumes
         order.verify(production).resume(farm.id());
         verify(production, never()).finish(any());
     }
@@ -304,7 +318,7 @@ class StasisServiceTest {
         when(world.capture(farm)).thenReturn(new byte[] { 1 });
         producing.enter(farm.id(), creator);
         doThrow(new IllegalStateException("partial restore")).when(world).restore(any(), any());
-        doThrow(new IllegalStateException("rollback failure")).when(world).fill(any());
+        doThrow(new IllegalStateException("rollback failure")).when(world).fill(any(), any(FillerStyle.class));
         assertThrows(IllegalArgumentException.class, () -> producing.restore(farm.id(), creator));
         verify(production).pause(farm.id());
         verify(production, never()).resume(any());

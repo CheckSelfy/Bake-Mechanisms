@@ -217,7 +217,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                     check(outputBreak.isCancelled(), "stasis output can be broken");
                 }
                 check(chickens() == 0, "original chickens remain in stasis");
-                pass("C05", "both cuboids entirely bedrock; original chickens absent; only output tickets retained");
+                pass("C05", "both cuboids entirely decorative slime filler; original chickens absent; only output tickets retained");
                 command(a, "unregister --id " + blockFarm);
                 command(a, "unregister --id " + blockFarm + " confirm");
                 state(blockFarm, State.STASIS);
@@ -414,7 +414,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
         state(id, State.NEEDS_PROFILING);
         check(farm(id).farm().profile() == null, "restore retained old profile");
         World world = world(id);
-        check(world.getBlockAt(0, 63, 0).getType() != Material.BEDROCK, "filler remains");
+        check(world.getBlockAt(0, 63, 0).getType() == Material.STONE, "original foundation was not restored");
         var marker = ((Container) world.getBlockAt(0, 65, 0).getState()).getInventory().getItem(0);
         check(marker != null && marker.getType() == Material.STONE && marker.getAmount() == 3
                 && Component.text("snapshot-marker").equals(marker.getItemMeta().displayName()), "internal marker lost");
@@ -427,8 +427,10 @@ public final class CorrectnessPlugin extends JavaPlugin {
         return world.getPluginChunkTickets().getOrDefault(plugin, List.of()).size();
     }
     private void filler(World world) {
+        var region = farm(world.equals(blocks) ? blockFarm : entityFarm).farm().mechanism();
+        var generator = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region, io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
         for (int x = 0; x < 16; x++) for (int y = 63; y <= 70; y++) for (int z = 0; z < 16; z++)
-            check(world.getBlockAt(x, y, z).getType() == Material.BEDROCK, "incomplete filler " + world.getName());
+            check(world.getBlockAt(x, y, z).getType() == generator.material(x,y-63,z), "incomplete filler " + world.getName());
     }
     private org.bukkit.inventory.Inventory output(World world) { return output(world, 0); }
     private org.bukkit.inventory.Inventory output(World world, int x) { return ((Container) world.getBlockAt(x + 16, 64, 7).getState()).getInventory(); }

@@ -112,7 +112,7 @@ public final class EntityNbtCheck {
         service.enter(farm.id(), creator);
         require(external.isValid(), "Stasis removed external target outside the mechanism");
         require(nearby().isEmpty(), "Removal left entities or dropped inventory copies");
-        require(world.getBlockAt(160, 296, 0).getType() == Material.BEDROCK, "No filler after enter");
+        require(FillerAssertions.matches(world.getBlockAt(160, 296, 0), region), "No filler after enter");
         plugin.getLogger().info("ENTITY_NBT_CAPTURE_PASSED: " + entities.size() + " entities; durable snapshot before shutdown");
     }
 
@@ -149,7 +149,7 @@ public final class EntityNbtCheck {
             conflictRejected = error.getMessage().contains("UUID");
         }
         require(conflictRejected && conflict.isValid(), "UUID conflict deleted an existing entity or allowed duplicate restore");
-        require(world.getBlockAt(160, 296, 0).getType() == Material.BEDROCK, "UUID conflict changed the filler");
+        require(FillerAssertions.matches(world.getBlockAt(160, 296, 0), region), "UUID conflict changed the filler");
         removeTree(conflict);
         service.restore(farmId, creator);
         assertEntities(expected, ids);

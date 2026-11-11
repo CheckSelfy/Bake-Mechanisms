@@ -204,9 +204,16 @@ tasks.check { dependsOn(tasks.named(farmLab.classesTaskName)) }
 tasks.register<Jar>("farmLabJar") {
     group = "verification"
     archiveFileName.set("bake-farm-lab.jar")
-    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*") }
+    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*", "**/SlimeGallery*") }
     from("test-worlds/ppl9") { into("fixtures"); exclude("README.md") }
 }
+tasks.register<Jar>("slimeGalleryJar") {
+    group = "verification"
+    archiveFileName.set("bake-slime-gallery.jar")
+    from(farmLab.output) { include("**/SlimeGallery*") }
+    from("src/farmLab/slime-plugin.yml") { rename { "plugin.yml" } }
+}
+
 tasks.register<Jar>("farmLabReviewJar") {
     group = "verification"
     archiveFileName.set("bake-farm-lab-review.jar")
@@ -267,6 +274,7 @@ tasks.register<JavaExec>("stasisSmoke") {
             || !log.contains("MOB_BEHAVIOR_SMOKE_PASSED")
             || !log.contains("PROFILING_INPUT_SMOKE_PASSED")
             || !log.contains("PROFILING_NATURAL_INPUT_SMOKE_PASSED")
+            || !log.contains("SLIME_FILLER_SMOKE_PASSED")
             || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
             throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
         }

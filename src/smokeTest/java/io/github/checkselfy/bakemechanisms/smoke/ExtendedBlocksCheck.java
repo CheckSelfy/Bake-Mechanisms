@@ -106,7 +106,7 @@ final class ExtendedBlocksCheck {
         registry.markReady(farm.id(), profile);
         service.enter(farm.id(), creator);
         check(world.getNearbyEntities(bounds).isEmpty(), "replacement released items, XP or bees");
-        check(voidBlock.getType() == Material.BEDROCK, "void cell was not replaced");
+        check(FillerAssertions.matches(voidBlock, region), "void cell was not replaced");
         service.restore(farm.id(), creator);
         assertRestored(world, expected, key);
         check(voidBlock.getType() == Material.STRUCTURE_VOID, "void cell not restored");

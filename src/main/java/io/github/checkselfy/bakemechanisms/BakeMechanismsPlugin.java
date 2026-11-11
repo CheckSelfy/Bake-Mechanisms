@@ -58,9 +58,11 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             return;
         }
         ProfilingSettings settings;
+        io.github.checkselfy.bakemechanisms.stasis.FillerStyle filler;
         EmulationSettings emulationSettings;
         try {
             var defaults = ProfilingSettings.DEFAULT;
+            filler = io.github.checkselfy.bakemechanisms.stasis.FillerStyle.fromConfig(getConfig().getConfigurationSection("stasis.filler"));
             settings = new ProfilingSettings(
                     getConfig().getInt("profiling.snapshot-interval", defaults.snapshotInterval()),
                     getConfig().getLong("profiling.min-useful-ticks", defaults.minUsefulTicks()),
@@ -115,7 +117,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(playerSafety, this);
         var stasis = new StasisService(registry, stasisWorld,
                 new FileSnapshotStore(getDataFolder().toPath().resolve("farms"), getServer().getMinecraftVersion()),
-                production(emulation, stored));
+                production(emulation, stored),filler);
         try {
             for (var id : stasis.recover()) {
                 getLogger().warning("Farm " + id + ": stored as STASIS without an active snapshot, now NEEDS_PROFILING.");

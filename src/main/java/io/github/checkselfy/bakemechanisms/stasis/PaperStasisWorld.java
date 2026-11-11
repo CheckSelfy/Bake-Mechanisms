@@ -112,6 +112,10 @@ public final class PaperStasisWorld implements StasisWorld {
     }
 
     @Override public void fill(Cuboid mechanism) {
+        fill(mechanism,FillerStyle.DEFAULT);
+    }
+
+    @Override public void fill(Cuboid mechanism,FillerStyle style) {
         var world = world(mechanism);
         loadChunks(world, mechanism);
         // Paper drops live container contents on replacement, even with physics=false.
@@ -130,7 +134,10 @@ public final class PaperStasisWorld implements StasisWorld {
                 if (!hive.update(true, false)) throw new IllegalStateException("Не удалось подготовить улей.");
             }
         });
-        eachBlock(world, mechanism, block -> block.setType(Material.BEDROCK, false));
+        var filler=new SlimeFiller(mechanism,style);
+        var min=mechanism.min();
+        eachBlock(world, mechanism, block -> block.setType(filler.material((long)block.getX()-min.x(),
+                (long)block.getY()-min.y(),(long)block.getZ()-min.z()), false));
     }
 
     @Override public void validateRestore(MarkedFarm farm, byte[] data) {

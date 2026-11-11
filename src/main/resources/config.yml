@@ -15,3 +15,21 @@ profiling:
 emulation:
   # Ticks between moving emulated items into the output container. Independent of profiling.snapshot-interval.
   update-interval: 20
+
+stasis:
+  filler:
+    # Applies to new stasis operations; existing snapshots retain their own appearance.
+    # AUTO chooses the widest vertical face, SOUTH on a tie. Or NORTH/SOUTH/EAST/WEST.
+    front: AUTO
+    # Local, mirrored patterns: BANDS or PANELS. No randomness or animation.
+    pattern: BANDS
+    patch-size: 3
+    palette:
+      # Outer surfaces must be glass: no bounce, sticky blocks, ticking blocks or mob-spawn surfaces.
+      shell: LIME_STAINED_GLASS
+      shade: GREEN_STAINED_GLASS
+      face-glass: BLACK_STAINED_GLASS
+      # Opaque materials are used only inside: concrete, terracotta or glass.
+      core: LIME_TERRACOTTA
+      accent: GREEN_CONCRETE
+      face: BLACK_CONCRETE

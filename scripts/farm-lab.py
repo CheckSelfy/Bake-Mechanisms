@@ -48,7 +48,7 @@ def prepare(server, cache, headless=False, accept_eula=False, port=25566):
     if not accept_eula and not (marker.exists() or (accepted.exists() and 'eula=true' in accepted.read_text())):
         raise RuntimeError('Accept Minecraft EULA first: pass --accept-eula or prepare an accepted local fixture cache')
     wrapper = ROOT / ('gradlew.bat' if os.name == 'nt' else 'gradlew')
-    subprocess.run([str(wrapper), 'jar', 'farmLabJar', 'farmLabReviewJar', '--console=plain'], cwd=ROOT, check=True)
+    subprocess.run([str(wrapper), 'jar', 'farmLabJar', 'farmLabReviewJar', 'slimeGalleryJar', '--console=plain'], cwd=ROOT, check=True)
     server.mkdir(parents=True, exist_ok=True)
     if not marker.exists():
         for name in ('cache', 'libraries', 'versions'):
@@ -67,7 +67,7 @@ def prepare(server, cache, headless=False, accept_eula=False, port=25566):
             'spawn-protection=0\nview-distance=5\nsimulation-distance=5\n'
             'pause-when-empty-seconds=-1\nmax-tick-time=120000\nallow-flight=true\n', encoding='utf-8')
         marker.write_text(json.dumps({'format': 1, 'headless': headless, 'port': port}, indent=2), encoding='utf-8')
-    names = ['bake-mechanisms.jar', 'bake-farm-lab.jar']
+    names = ['bake-mechanisms.jar', 'bake-farm-lab.jar', 'bake-slime-gallery.jar']
     if headless:
         names.append('bake-farm-lab-review.jar')
     for name in names:

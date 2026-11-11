@@ -30,8 +30,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 /** Snapshot-owned recovery manifest; does not persist the emulation state maintained by #8. */
 public final class FileSnapshotStore implements SnapshotStore {
     private static final int MAX_BYTES = 128 * 1024 * 1024;
-    /** Format 2 lists every output container with its rates; format 1 manifests had a single output. */
-    private static final int FORMAT = 2;
+    /** Format 3 persists the filler; formats 1/2 used bedrock. Format 1 had a single output. */
+    private static final int FORMAT = 3;
     private final Path farmsDirectory;
     private final String minecraftVersion;
 
@@ -71,6 +71,7 @@ public final class FileSnapshotStore implements SnapshotStore {
         yaml.set("profile.useful-ticks", farm.profile().usefulTicks());
         yaml.set("sha256", digest(data));
         yaml.set("binary-file", "snapshot.bin");
+        writeFiller(yaml,snapshot.filler());
         atomicWrite(directory.resolve("snapshot.bin"), data);
         // Publication point: without this manifest, a file is never treated as an active snapshot.
         atomicWrite(directory.resolve("stasis.yml"), yaml.saveToString().getBytes(StandardCharsets.UTF_8));
@@ -93,7 +94,7 @@ public final class FileSnapshotStore implements SnapshotStore {
             var yaml = new YamlConfiguration();
             yaml.load(manifest.toFile());
             int format = yaml.getInt("format-version");
-            if ((format != 1 && format != FORMAT) || !minecraftVersion.equals("26.3")
+            if ((format < 1 || format > FORMAT) || !minecraftVersion.equals("26.3")
                     || !minecraftVersion.equals(yaml.getString("minecraft-version"))) {
                 throw new IOException("Несовместимая версия снимка: " + manifest);
             }
@@ -130,10 +131,33 @@ public final class FileSnapshotStore implements SnapshotStore {
             if (Files.size(binary) > MAX_BYTES) throw new IOException("Снимок слишком велик.");
             var data = Files.readAllBytes(binary);
             if (!digest(data).equals(yaml.getString("sha256"))) throw new IOException("Повреждён снимок " + id);
-            return new SavedSnapshot(farm, data);
+            return new SavedSnapshot(farm, data,format < 3 ? FillerStyle.LEGACY : readFiller(yaml));
         } catch (InvalidConfigurationException | IllegalArgumentException | NullPointerException error) {
             throw new IOException("Не удалось прочитать снимок " + manifest, error);
         }
+    }
+
+    private static void writeFiller(YamlConfiguration yaml,FillerStyle style) {
+        yaml.set("filler.algorithm-version",style.version());
+        yaml.set("filler.front",style.front().name());
+        yaml.set("filler.pattern",style.pattern().name());
+        yaml.set("filler.patch-size",style.patchSize());
+        var p=style.palette();
+        yaml.set("filler.palette.shell",p.shell().name()); yaml.set("filler.palette.shade",p.shade().name());
+        yaml.set("filler.palette.core",p.core().name()); yaml.set("filler.palette.accent",p.accent().name());
+        yaml.set("filler.palette.face",p.face().name()); yaml.set("filler.palette.face-glass",p.faceGlass().name());
+    }
+
+    private static FillerStyle readFiller(YamlConfiguration yaml) throws IOException {
+        var section=yaml.getConfigurationSection("filler");
+        if(section==null || !section.isInt("algorithm-version") || !section.isInt("patch-size"))
+            throw new IOException("Описание заполнителя отсутствует или повреждено.");
+        for(var key:List.of("front","pattern","palette.shell","palette.shade","palette.core",
+                "palette.accent","palette.face","palette.face-glass"))
+            if(!section.isString(key)) throw new IOException("Описание заполнителя не содержит " + key);
+        var style=FillerStyle.fromConfig(section);
+        if(style.front()==FillerStyle.Front.AUTO) throw new IOException("Направление лица заполнителя не сохранено.");
+        return new FillerStyle(section.getInt("algorithm-version"),style.front(),style.pattern(),style.patchSize(),style.palette());
     }
 
     @Override public void deactivate(UUID farmId) throws IOException {

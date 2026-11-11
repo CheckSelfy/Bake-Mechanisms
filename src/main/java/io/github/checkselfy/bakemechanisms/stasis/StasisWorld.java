@@ -11,6 +11,8 @@ public interface StasisWorld {
     byte[] capture(MarkedFarm farm);
     /** Removes only members recorded in the saved snapshot, including passengers outside the cuboid. */
     void removeEntities(MarkedFarm farm, byte[] data);
-    void fill(Cuboid mechanism);
+    default void fill(Cuboid mechanism) { fill(mechanism,FillerStyle.DEFAULT); }
+    /** Uses the persisted appearance during both initial replacement and rollback. */
+    void fill(Cuboid mechanism,FillerStyle style);
     void restore(MarkedFarm farm, byte[] data);
 }
