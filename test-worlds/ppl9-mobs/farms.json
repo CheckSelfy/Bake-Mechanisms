@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "source": "User-provided E:/Sites/ppl9-farm (Minecraft 1.21.3); original files are read-only inputs",
+  "farms": [
+    {
+      "id": "skeleton",
+      "source_min": [28, -33, -328],
+      "source_max": [40, -9, -316],
+      "destination": [0, 64, 0],
+      "size": [13, 25, 13],
+      "spawner": [6, 84, 6],
+      "output": [-1, 71, 6],
+      "adaptations": [
+        "Bypass the existing sorter: route the original pickup hopper west along destination (0..6,71,6) into an external double chest at (-1,71,5..6). Lower original hoppers otherwise pull loot into internal sorted storage before it reaches the new output.",
+        "Close the original manual killing slit at (5,73,6) with glass and put six tame wolves in the existing drop cell at (6.5,73,6.5). The online creator owns them and waits within follow distance, outside profiling isolation.",
+        "Wolves are invulnerable test producers to avoid fixture attrition. Skeleton equipment, drop chances, enchantments, durability, AI and death loot are not set by the test.",
+        "Remove the player's unrelated ender chest from this disposable mechanism copy; it is outside the supported snapshot tile types.",
+        "Remove comparator tiles from the unused original sorter, which the direct pickup row bypasses. Comparator tiles are not an audited snapshot type.",
+        "Clear historical stock and loose items; before profiling remove already-spawned skeletons and their finite starting equipment, leaving renewable spawners and wolf producers. Accelerate only native spawner timing to 80..120 ticks, spawn count 4, max nearby 24; hard difficulty and fully aged test chunks."
+      ]
+    },
+    {
+      "id": "zombie",
+      "source_min": [-395, -25, 78],
+      "source_max": [-382, -11, 91],
+      "destination": [64, 64, 0],
+      "size": [14, 15, 14],
+      "spawner": [70, 73, 6],
+      "output": [78, 67, 2],
+      "adaptations": [
+        "Replace the manual killing slab at (74,68,2) with an open fence gate supporting a lava blade at (74,69,2). Glass at (73,69,2) and (74,69,3) closes the attack slit and contains lava; drops fall below the lava into the existing pickup hopper. This uses supported plain blocks rather than an unaudited campfire tile.",
+        "Route the existing pickup hopper east along (74..77,67,2) into an external double chest at (78,67,2..3).",
+        "Remove the player's unrelated ender chest from this disposable mechanism copy; it is outside the supported snapshot tile types.",
+        "Clear historical stock and loose items; before profiling remove already-spawned zombies and their finite starting equipment. Accelerate only native spawner timing to 80..120 ticks, spawn count 4, max nearby 24; hard difficulty and fully aged test chunks."
+      ]
+    }
+  ]
+}

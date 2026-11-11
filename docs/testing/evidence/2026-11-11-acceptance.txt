@@ -1,0 +1,189 @@
+Acceptance evidence, 2026-11-11. Binary hashes identify each executed version. General lifecycle predates ARROW admission; native audit/smoke and mob tests cover the production extension.
+
+=== acceptance-20261111-02 ===
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "04f2a4d6ad12e6f9c1f4d7a92c021d8b84fe4b8318b95ba4747c3a84546bcd64",
+    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": false,
+  "client_acceptance_only": false,
+  "port": 25566,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+}
+{
+  "minimum_offline_seconds": 3.0002461000003677,
+  "note": "Measured after clean process exit and before starting the next JVM; startup adds more offline time."
+}
+[21:08:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=15 world=bake_blocks farm=e8b84465-62f2-444f-a4e4-52fb253074c1; production wand, synthetic events, reversed corners, real non-OP creator
+[21:08:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=15 world=bake_blocks farm=e79ff49a-1b3b-4965-a8b6-0464e6269c03; production wand, synthetic events, reversed corners, real non-OP creator
+[21:09:30 INFO]: [BakeCorrectness] REVIEW_PASS C04_EMPTY_SATURATED tick=3615 3600 actual ticks: zero output rejected; saturated profile uses 200 ticks and rate=0.1; short-segment rejection disabled
+[21:10:54 INFO]: [BakeCorrectness] REVIEW_PASS C02_WARMUP tick=12015 12000 actual server ticks; randomTickSpeed=3; two nearby clients
+[21:12:54 INFO]: [BakeCorrectness] REVIEW_PASS C02 tick=24015 12000 ticks natural output blocks={CACTUS=17} entities={EGG=12}
+[21:12:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=24015 world=bake_blocks farm=c5f6bea2-5562-4b34-8f9f-2e523e4a3399; production wand, synthetic events, reversed corners, real non-OP creator
+[21:12:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=24015 world=bake_entities farm=587f13de-dc1d-412b-9d19-f818fa074ca9; production wand, synthetic events, reversed corners, real non-OP creator
+[21:12:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_RIGHTS tick=24015 noncreator lifecycle commands denied and UUID absent from completion
+[21:12:54 INFO]: [BakeCorrectness] REVIEW_PASS C04_CANCEL tick=24015 production /bake profile + cancel; original retained and tickets released
+[21:13:30 INFO]: [BakeCorrectness] REVIEW_PASS C03 tick=27615 3600 ticks, baseline excluded; profiles=ProductionProfile[outputs=[{CACTUS=0.02631578947368421}], usefulTicks=3040] / ProductionProfile[outputs=[{DIAMOND_CHESTPLATE=0.005747126436781609, EGG=0.022988505747126436, DIAMOND_SWORD=0.005747126436781609}], usefulTicks=3480]
+[21:13:30 INFO]: [BakeCorrectness] REVIEW_PASS C05_OCCUPIED tick=27615 player inside: command refused, READY retained, player not teleported
+[21:13:30 INFO]: [BakeCorrectness] REVIEW_PASS C12_SAVE_COMMAND tick=27615 production stasis command refused actual filesystem write failure before changing world
+[21:13:30 INFO]: [BakeCorrectness] REVIEW_PASS C05 tick=27615 both cuboids entirely bedrock; original chickens absent; only output tickets retained
+[21:14:10 INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31615 farm=c5f6bea2-5562-4b34-8f9f-2e523e4a3399 type=CACTUS ticks=4000 produced=5 fraction=0.26315789473684200
+[21:14:10 INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31615 farm=587f13de-dc1d-412b-9d19-f818fa074ca9 type=DIAMOND_CHESTPLATE ticks=4000 produced=1 fraction=0.149425287356321800
+[21:14:10 INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31615 farm=587f13de-dc1d-412b-9d19-f818fa074ca9 type=EGG ticks=4000 produced=4 fraction=0.597701149425287200
+[21:14:10 INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31615 farm=587f13de-dc1d-412b-9d19-f818fa074ca9 type=DIAMOND_SWORD ticks=4000 produced=1 fraction=0.149425287356321800
+[21:14:10 INFO]: [BakeCorrectness] REVIEW_PASS C06_C07 tick=31615 exact 4000-tick inventory + buffer + fraction accounting for every type; plain swords; no XP orbs
+[21:14:10 INFO]: [BakeCorrectness] REVIEW_PASS C09_ENTITIES tick=31615 8 chickens and snapshot-marker inventory restored; profile invalidated
+[21:14:16 INFO]: [BakeCorrectness] REVIEW_PASS C08_BLOCKED tick=32195 pending production reached full output after 580 ticks
+[21:14:52 INFO]: [BakeCorrectness] REVIEW_PASS C08_PAUSE tick=35795 full output: identical buffer/fractions for 3600 ticks; no overflow drops
+[21:14:54 INFO]: [BakeCorrectness] REVIEW_PASS RESTART_READY tick=35995 one STASIS farm with full output/nonempty buffer; one unfinished PROFILING farm
+[21:15:04 INFO]: [BakeCorrectness] REVIEW_PASS C10 tick=13 real process restart: active filler/snapshot/profile/buffer/fractions retained; unfinished profile cancelled; blocked production progress unchanged
+[21:15:09 INFO]: [BakeCorrectness] REVIEW_PASS C08_HOPPER tick=526 native hopper extracted a full stack from protected stasis output; ticks=513
+[21:15:11 INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=726 farm=c5f6bea2-5562-4b34-8f9f-2e523e4a3399 type=CACTUS ticks=200 produced=0 fraction=0.31578947368421040
+[21:15:11 INFO]: [BakeCorrectness] REVIEW_PASS OPEN_RESTART_READY tick=726 output has free space; production active; snapshot progress and inventory saved
+[21:15:27 INFO]: [BakeCorrectness] REVIEW_PASS C10_OPEN tick=17 unblocked output, nonzero fractions and inventory unchanged across offline interval; no wall-clock production
+[21:15:29 INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=217 farm=c5f6bea2-5562-4b34-8f9f-2e523e4a3399 type=CACTUS ticks=200 produced=0 fraction=0.57894736842105250
+[21:15:29 INFO]: [BakeCorrectness] REVIEW_PASS C08_RESUME tick=217 freed output: pending buffer delivered and exact production resumed
+[21:15:29 INFO]: [BakeCorrectness] REVIEW_PASS C09_BLOCKS tick=217 cactus, hoppers, internal marker restored after process restart
+[21:16:11 INFO]: [BakeCorrectness] REVIEW_PASS C12_RESTORE_COMMAND tick=4417 actual deactivate failure rolled native restore back to filler; buffer/fractions/snapshot retained
+[21:16:13 INFO]: [BakeCorrectness] REVIEW_PASS C09_FULL_RESTORE tick=4617 original restored with full output; exact pending buffer retained for 200 ticks
+[21:16:14 INFO]: [BakeCorrectness] REVIEW_PASS C09_DRAIN tick=4637 restored buffer delivered exactly once after freeing space; no new emulation
+[21:16:14 INFO]: [BakeCorrectness] REVIEW_PASS C11 tick=4637 repeat profile/stasis/restore; READY edit invalidation; creator-only confirmed deletion; all files/tickets released
+[21:16:14 INFO]: [BakeTestFixtures] FIXTURES_CHECK_OK farms=2
+[21:16:14 INFO]: [BakeCorrectness] REVIEW_PASS CORRECTNESS_PASSED tick=4637 automated lifecycle and fixture validation complete; client rendering boundaries documented
+
+=== acceptance-clients-20261111-09 ===
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "833f432997c20dba4442c784dfa8ca7a8b32dc7e365ef87d98f995a437e0f41c",
+    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": false,
+  "client_acceptance_only": true,
+  "port": 25568,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+}
+[21:26:05 INFO]: [BakeCorrectness] REVIEW_PASS C01_WIRE_SURVIVAL tick=560 real input/reach/corners/output; cross-chunk double chest=false
+[21:26:15 INFO]: [BakeCorrectness] REVIEW_PASS C01_CONFLICTS_WIRE_SURVIVAL tick=1520 overlapping registration and internal output refused without partial registration
+[21:26:25 INFO]: [BakeCorrectness] REVIEW_PASS C01_RESETS_WIRE_SURVIVAL tick=2520 real world changes and real disconnect/reconnect clear selection without changing registration
+[21:26:36 INFO]: [BakeCorrectness] REVIEW_PASS C03_C04_WIRE_SURVIVAL tick=7120 protected movement/break/open; cancellation and completed result messages received
+[21:26:40 INFO]: [BakeCorrectness] REVIEW_PASS C08_PISTON tick=7520 powered native piston could not move the stasis output; vanilla immovable-container behavior also applies
+[21:26:43 INFO]: [BakeCorrectness] REVIEW_PASS C08_PLAYER_WIRE tick=7840 native container shift-click moved a full stack to the non-OP player's inventory
+[21:26:44 INFO]: [BakeCorrectness] REVIEW_PASS C05_WIRE tick=7960 real survival/creative break packets protected filler; stasis output opened; restore completed
+[21:26:52 INFO]: [BakeCorrectness] REVIEW_PASS C01_WIRE_CREATIVE tick=8720 real input/reach/corners/output; cross-chunk double chest=true
+[21:27:01 INFO]: [BakeCorrectness] REVIEW_PASS C01_CONFLICTS_WIRE_CREATIVE tick=9680 overlapping registration and internal output refused without partial registration
+[21:27:11 INFO]: [BakeCorrectness] REVIEW_PASS C01_RESETS_WIRE_CREATIVE tick=10680 real world changes and real disconnect/reconnect clear selection without changing registration
+[21:27:21 INFO]: [BakeCorrectness] REVIEW_PASS C03_C04_WIRE_CREATIVE tick=15200 protected movement/break/open; cancellation and completed result messages received
+[21:27:23 INFO]: [BakeCorrectness] REVIEW_PASS CLIENT_ACCEPTANCE_PASSED tick=15360 wire commands/clicks/sneak/reach/container/movement/messages; survival and creative; no synthetic events
+
+=== acceptance-short-20261111 ===
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "8f8148d0312fae99a97c0dff64d06b13442e51aad923af4243bdc57bf20ee09e",
+    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": true,
+  "client_acceptance_only": false,
+  "port": 25569,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+}
+[21:17:42 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=16 world=bake_blocks farm=f666debd-9d6e-4feb-b752-63c3f4fc880b; production wand, synthetic events, reversed corners, real non-OP creator
+[21:17:42 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=16 world=bake_blocks farm=d616ad19-f65a-483f-8317-73716b75818f; production wand, synthetic events, reversed corners, real non-OP creator
+[21:18:19 INFO]: [BakeCorrectness] REVIEW_PASS SHORT_PROFILE_PASSED tick=3616 3600 actual ticks: 200-tick saturated segment rejected with 600-tick minimum enabled; zero output also rejected
+
+=== acceptance-mobs-20261111-07 ===
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "71752411f34e20b3d07556421a26046abbe8a640fd97287a5fd2f05f622b5e3f",
+    "bake-mechanisms.jar": "34644776a1e85655182e1fa1ca384dcdd1642ff42cc35389c58a3046dabd40c6",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": false,
+  "client_acceptance_only": false,
+  "mob_farms_only": true,
+  "port": 25570,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+}
+[22:09:48 INFO]: [BakeCorrectness] REVIEW_PASS MOB_IMPORTED tick=27 skeleton source=[28, -33, -328]..[40, -9, -316]
+[22:09:49 INFO]: [BakeCorrectness] REVIEW_PASS MOB_IMPORTED tick=27 zombie source=[-395, -25, 78]..[-382, -11, 91]
+[22:09:49 INFO]: [BakeCorrectness] REVIEW_PASS MOB_SETUP tick=27 two imported PPL9 spawner mechanisms; native loot/equipment unchanged; six invulnerable tame wolves; accelerated spawner delays only
+[22:09:52 INFO]: [BakeCorrectness] REVIEW_PASS MOB_WARMUP tick=1027 skeleton native-spawned=32 native-deaths=17 output={ARROW=16, BONE=22, BOW=1}
+[22:09:52 INFO]: [BakeCorrectness] REVIEW_PASS MOB_WARMUP tick=1027 zombie native-spawned=10 native-deaths=5 output={ROTTEN_FLESH=2}
+[22:09:52 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=1355 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator GOLDEN_CHESTPLATE damage=93 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:fire_protection]=Enchantment Fire Protection}}=1}
+[22:09:52 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=1535 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator GOLDEN_CHESTPLATE damage=93 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:fire_protection]=Enchantment Fire Protection}}=1}
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=1779 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator LEATHER_BOOTS damage=38 enchants={}
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=1980 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator LEATHER_BOOTS damage=38 enchants={}
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS MOB_WARMUP tick=2027 skeleton native-spawned=64 native-deaths=37 output={ARROW=39, BONE=51, BOW=3, GOLDEN_CHESTPLATE=1}
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS MOB_WARMUP tick=2027 zombie native-spawned=20 native-deaths=15 output={ROTTEN_FLESH=5}
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS C07_NATIVE_ARMOR tick=2027 naturally spawned skeleton dropped GOLDEN_CHESTPLATE damage=93 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:fire_protection]=Enchantment Fire Protection}}=1}; collected through original hopper chain; no equipment/drop-chance changes
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS MOB_NATURAL_OUTPUT tick=2027 skeleton native-spawned=64 native-deaths=37 output={ARROW=39, BONE=51, BOW=3, GOLDEN_CHESTPLATE=1}
+[22:09:53 INFO]: [BakeCorrectness] REVIEW_PASS MOB_NATURAL_OUTPUT tick=2027 zombie native-spawned=20 native-deaths=15 output={ROTTEN_FLESH=5}
+[22:09:54 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=2677 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator COPPER_BOOTS damage=124 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:feather_falling]=Enchantment Feather Falling}}=3, CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:projectile_protection]=Enchantment Projectile Protection}}=3, CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:unbreaking]=Enchantment Unbreaking}}=2}
+[22:09:54 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=2677 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator COPPER_HELMET damage=22 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:protection]=Enchantment Protection}}=2}
+[22:09:54 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=2718 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator COPPER_HELMET damage=22 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:protection]=Enchantment Protection}}=2}
+[22:09:55 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=3294 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator LEATHER_BOOTS damage=50 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:depth_strider]=Enchantment Depth Strider}}=2}
+[22:09:55 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=3315 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator LEATHER_BOOTS damage=50 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:depth_strider]=Enchantment Depth Strider}}=2}
+[22:09:56 INFO]: [BakeCorrectness] REVIEW_PASS MOB_PROFILING tick=4027 skeleton native-spawned=119 native-deaths=75 output={ARROW=44, BONE=35, BOW=3, COPPER_BOOTS=1, COPPER_HELMET=1, LEATHER_BOOTS=1}
+[22:09:56 INFO]: [BakeCorrectness] REVIEW_PASS MOB_PROFILING tick=4027 zombie native-spawned=42 native-deaths=33 output={ROTTEN_FLESH=16}
+[22:09:56 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=4456 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator GOLDEN_BOOTS damage=90 enchants={}
+[22:09:56 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=4537 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator GOLDEN_BOOTS damage=90 enchants={}
+[22:09:57 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=4859 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator GOLDEN_BOOTS damage=90 enchants={}
+[22:09:57 INFO]: [BakeCorrectness] REVIEW_PASS NATIVE_ARMOR_DROP tick=5428 spawnReason=SPAWNER type=SKELETON killer=ReviewCreator COPPER_BOOTS damage=65 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:feather_falling]=Enchantment Feather Falling}}=3, CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:unbreaking]=Enchantment Unbreaking}}=2, CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:protection]=Enchantment Protection}}=2}
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_PROFILE tick=5627 skeleton usefulTicks=3280 rates={BOW=0.024390243902439025, BONE=0.5060975609756098, COPPER_BOOTS=0.012195121951219513, COPPER_HELMET=0.006097560975609756, GOLDEN_BOOTS=0.006097560975609756, ARROW=0.49390243902439024, LEATHER_BOOTS=0.006097560975609756}
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_PROFILE tick=5627 zombie usefulTicks=3180 rates={ROTTEN_FLESH=0.1761006289308176}
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS C07_PROFILED_ARMOR tick=5627 measured native input=COPPER_BOOTS damage=124 enchants={CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:feather_falling]=Enchantment Feather Falling}}=3, CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:projectile_protection]=Enchantment Projectile Protection}}=3, CraftEnchantment{holder=Reference{ResourceKey[minecraft:enchantment / minecraft:unbreaking]=Enchantment Unbreaking}}=2}
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_STASIS tick=5648 spawners, wolves and live mobs snapshotted; complete filler; only emulation remains; accounting duration=1680; native snapshot-eligibility wait=21
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=BOW ticks=1680 whole=2 fraction=0.048780487804878100
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=BONE ticks=1680 whole=42 fraction=0.5121951219512232
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=COPPER_BOOTS ticks=1680 whole=1 fraction=0.024390243902439092
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=COPPER_HELMET ticks=1680 whole=0 fraction=0.512195121951219504
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=GOLDEN_BOOTS ticks=1680 whole=0 fraction=0.512195121951219504
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=ARROW ticks=1680 whole=41 fraction=0.48780487804878016
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 skeleton type=LEATHER_BOOTS ticks=1680 whole=0 fraction=0.512195121951219504
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_ACCOUNTING tick=7328 zombie type=ROTTEN_FLESH ticks=1680 whole=14 fraction=0.7924528301886784
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS C07_MOB_NORMALIZATION tick=7328 natural original metadata unchanged; plain full-durability armor generated; no XP; all whole items/fractions verified
+[22:09:58 INFO]: [BakeCorrectness] REVIEW_PASS MOB_RESTORE tick=7328 skeleton every block/inventory, native spawner delay and 33 entity UUIDs restored exactly
+[22:09:59 INFO]: [BakeCorrectness] REVIEW_PASS MOB_RESTORE tick=7328 zombie every block/inventory, native spawner delay and 4 entity UUIDs restored exactly
+[22:09:59 INFO]: [BakeCorrectness] REVIEW_PASS MOB_FARMS_PASSED tick=7328 two native mob producers; natural armor, normalization, exact accounting, XP isolation and complete restore verified
+
+=== acceptance-arrow-after-fix.log ===
+[21:52:02 INFO]: [BakeStasisSmoke] ENTITY_NBT_CAPTURE_PASSED: 97 entities; durable snapshot before shutdown
+[21:52:17 INFO]: [BakeStasisSmoke] MOB_TARGET_EXTERNAL_PASSED
+[21:52:17 INFO]: [BakeStasisSmoke] ENTITY_NBT_RESTART_PASSED: 96 entity types, 97 entities, repeated cycle, rejection checks
+BUILD SUCCESSFUL in 33s
+
+=== acceptance-final-stasis.log ===
+[21:53:12 INFO]: [BakeStasisSmoke] SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED
+[21:53:13 INFO]: [BakeStasisSmoke] CHICKEN_STASIS_SMOKE_PASSED: UUID/name/PDC/location/age/age-lock/egg timer; disk recovery and failed-restore retry
+[21:53:13 INFO]: [BakeStasisSmoke] ENTITY_STASIS_SMOKE_PASSED
+[21:53:13 INFO]: [BakeStasisSmoke] SIGN_STASIS_SMOKE_PASSED: 52 sign materials
+[21:53:14 INFO]: [BakeStasisSmoke] EXTENDED_BLOCK_STASIS_SMOKE_PASSED: 41 materials
+[21:53:14 INFO]: [BakeStasisSmoke] BLOCK_STASIS_SMOKE_PASSED
+[21:53:16 INFO]: [BakeStasisSmoke] MOVING_PISTON_STASIS_SMOKE_PASSED: 4 deferred cases
+[21:53:16 INFO]: [BakeStasisSmoke] FRAGILE_BLOCK_STASIS_SMOKE_PASSED: mature wheat retained after placement and subsequent ticks
+[21:53:23 INFO]: [BakeStasisSmoke] MOB_BEHAVIOR_PASSED: creeper-cat
+[21:53:28 INFO]: [BakeStasisSmoke] MOB_BEHAVIOR_PASSED: slime-golem
+[21:53:35 INFO]: [BakeStasisSmoke] MOB_BEHAVIOR_PASSED: villager-zombie-iron
+[21:53:35 INFO]: [BakeStasisSmoke] MOB_BEHAVIOR_SMOKE_PASSED
+[21:53:35 INFO]: [BakeStasisSmoke] PROFILING_INPUT_SMOKE_PASSED: live hopper event config, internal/adjacent prefill, returning chain, unknown pickups, mixed merges, output baseline/drain; profile={SUGAR_CANE=0.9832402234636871}
+[21:53:44 INFO]: [BakeStasisSmoke] PROFILING_NATURAL_INPUT_SMOKE_PASSED: native shears dispenser, wool and chicken egg collection
+BUILD SUCCESSFUL in 42s
