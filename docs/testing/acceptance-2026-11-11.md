@@ -54,4 +54,8 @@ Saved process logs were independently revalidated against the final runner. Comp
 
 Protocol automation does not establish rendered Minecraft UI/layout; the user confirmed that manual/visual acceptance on 2026-11-11. The previous natural-armor fixture gap is resolved. Selection reset on logout/world change and a powered piston attempt are now exercised natively; the piston result includes vanilla's immovable-container protection and is not an isolated proof of the plugin listener alone.
 
-**Acceptance complete.** At the user's explicit request, all acceptance checkboxes were marked and [issue #11](https://github.com/CheckSelfy/Bake-Mechanisms/issues/11) was closed as completed. [Final acceptance record](https://github.com/CheckSelfy/Bake-Mechanisms/issues/11#issuecomment-6805116735). Changes remain uncommitted in the workspace; this does not claim a published release.
+**Acceptance complete.** At the user's explicit request, all acceptance checkboxes were marked and [issue #11](https://github.com/CheckSelfy/Bake-Mechanisms/issues/11) was closed as completed. [Final acceptance record](https://github.com/CheckSelfy/Bake-Mechanisms/issues/11#issuecomment-6805116735). Acceptance was recorded before committing these changes; release publication is separate.
+
+## Integration with main
+
+Merged `origin/main` at `288428a`, including the initial-hopper-stock profiling fix, without conflicts. Fresh merged checks: **204 Java tests**, **15 Python tests**, native `stasisSmoke`, and the imported skeleton/zombie production/profile/stasis/accounting/restore run all **PASS**. Logs: `run/pr-11-build.log`, `run/pr-11-stasis.log`, `run/pr-11-mobs.log`. Mob restoration retained 30 skeleton-farm and 6 zombie-farm entity UUIDs; final marker at tick 9351.

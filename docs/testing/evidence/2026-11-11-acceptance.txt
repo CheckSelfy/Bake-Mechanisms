@@ -1,24 +1,24 @@
 Acceptance evidence, 2026-11-11. Binary hashes identify each executed version. General lifecycle predates ARROW admission; native audit/smoke and mob tests cover the production extension.
 
 === acceptance-20261111-02 ===
-{
-  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
-  "platform": "Windows-11-10.0.26200-SP0",
-  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
-  "sha256": {
-    "bake-correctness.jar": "04f2a4d6ad12e6f9c1f4d7a92c021d8b84fe4b8318b95ba4747c3a84546bcd64",
-    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
-    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
-  },
-  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
-  "short_profile_only": false,
-  "client_acceptance_only": false,
-  "port": 25566,
-  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "04f2a4d6ad12e6f9c1f4d7a92c021d8b84fe4b8318b95ba4747c3a84546bcd64",
+    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": false,
+  "client_acceptance_only": false,
+  "port": 25566,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
 }
-{
-  "minimum_offline_seconds": 3.0002461000003677,
-  "note": "Measured after clean process exit and before starting the next JVM; startup adds more offline time."
+{
+  "minimum_offline_seconds": 3.0002461000003677,
+  "note": "Measured after clean process exit and before starting the next JVM; startup adds more offline time."
 }
 [21:08:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=15 world=bake_blocks farm=e8b84465-62f2-444f-a4e4-52fb253074c1; production wand, synthetic events, reversed corners, real non-OP creator
 [21:08:54 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=15 world=bake_blocks farm=e79ff49a-1b3b-4965-a8b6-0464e6269c03; production wand, synthetic events, reversed corners, real non-OP creator
@@ -58,20 +58,20 @@ Acceptance evidence, 2026-11-11. Binary hashes identify each executed version. G
 [21:16:14 INFO]: [BakeCorrectness] REVIEW_PASS CORRECTNESS_PASSED tick=4637 automated lifecycle and fixture validation complete; client rendering boundaries documented
 
 === acceptance-clients-20261111-09 ===
-{
-  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
-  "platform": "Windows-11-10.0.26200-SP0",
-  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
-  "sha256": {
-    "bake-correctness.jar": "833f432997c20dba4442c784dfa8ca7a8b32dc7e365ef87d98f995a437e0f41c",
-    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
-    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
-  },
-  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
-  "short_profile_only": false,
-  "client_acceptance_only": true,
-  "port": 25568,
-  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "833f432997c20dba4442c784dfa8ca7a8b32dc7e365ef87d98f995a437e0f41c",
+    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": false,
+  "client_acceptance_only": true,
+  "port": 25568,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
 }
 [21:26:05 INFO]: [BakeCorrectness] REVIEW_PASS C01_WIRE_SURVIVAL tick=560 real input/reach/corners/output; cross-chunk double chest=false
 [21:26:15 INFO]: [BakeCorrectness] REVIEW_PASS C01_CONFLICTS_WIRE_SURVIVAL tick=1520 overlapping registration and internal output refused without partial registration
@@ -87,41 +87,41 @@ Acceptance evidence, 2026-11-11. Binary hashes identify each executed version. G
 [21:27:23 INFO]: [BakeCorrectness] REVIEW_PASS CLIENT_ACCEPTANCE_PASSED tick=15360 wire commands/clicks/sneak/reach/container/movement/messages; survival and creative; no synthetic events
 
 === acceptance-short-20261111 ===
-{
-  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
-  "platform": "Windows-11-10.0.26200-SP0",
-  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
-  "sha256": {
-    "bake-correctness.jar": "8f8148d0312fae99a97c0dff64d06b13442e51aad923af4243bdc57bf20ee09e",
-    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
-    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
-  },
-  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
-  "short_profile_only": true,
-  "client_acceptance_only": false,
-  "port": 25569,
-  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "8f8148d0312fae99a97c0dff64d06b13442e51aad923af4243bdc57bf20ee09e",
+    "bake-mechanisms.jar": "8c3247cf76624d717351bd4948f5eebbe978c988426eee94f5c08e88039410df",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": true,
+  "client_acceptance_only": false,
+  "port": 25569,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
 }
 [21:17:42 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=16 world=bake_blocks farm=f666debd-9d6e-4feb-b752-63c3f4fc880b; production wand, synthetic events, reversed corners, real non-OP creator
 [21:17:42 INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=16 world=bake_blocks farm=d616ad19-f65a-483f-8317-73716b75818f; production wand, synthetic events, reversed corners, real non-OP creator
 [21:18:19 INFO]: [BakeCorrectness] REVIEW_PASS SHORT_PROFILE_PASSED tick=3616 3600 actual ticks: 200-tick saturated segment rejected with 600-tick minimum enabled; zero output also rejected
 
 === acceptance-mobs-20261111-07 ===
-{
-  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
-  "platform": "Windows-11-10.0.26200-SP0",
-  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
-  "sha256": {
-    "bake-correctness.jar": "71752411f34e20b3d07556421a26046abbe8a640fd97287a5fd2f05f622b5e3f",
-    "bake-mechanisms.jar": "34644776a1e85655182e1fa1ca384dcdd1642ff42cc35389c58a3046dabd40c6",
-    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
-  },
-  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
-  "short_profile_only": false,
-  "client_acceptance_only": false,
-  "mob_farms_only": true,
-  "port": 25570,
-  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+{
+  "commit": "a376e250b7a2ff7f3b022fe1516dbde496b85fda",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "71752411f34e20b3d07556421a26046abbe8a640fd97287a5fd2f05f622b5e3f",
+    "bake-mechanisms.jar": "34644776a1e85655182e1fa1ca384dcdd1642ff42cc35389c58a3046dabd40c6",
+    "bake-test-fixtures.jar": "dacd133c8f5305c097829fb039ddadf0e6e84e04ccfcb7e240329a4f5741ea4c"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": false,
+  "client_acceptance_only": false,
+  "mob_farms_only": true,
+  "port": 25570,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
 }
 [22:09:48 INFO]: [BakeCorrectness] REVIEW_PASS MOB_IMPORTED tick=27 skeleton source=[28, -33, -328]..[40, -9, -316]
 [22:09:49 INFO]: [BakeCorrectness] REVIEW_PASS MOB_IMPORTED tick=27 zombie source=[-395, -25, 78]..[-382, -11, 91]
