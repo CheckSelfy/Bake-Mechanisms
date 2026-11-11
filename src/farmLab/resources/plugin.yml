@@ -1,0 +1,10 @@
+name: BakeFarmLab
+version: '1'
+main: io.github.checkselfy.bakemechanisms.lab.FarmLabPlugin
+api-version: '26.3'
+loadbefore: [BakeMechanisms]
+description: Disposable local farm lab; never install on a public gameplay server.
+commands:
+  farmlab:
+    description: Visit extracted farms, prepare creative selection, and record manual observations.
+    usage: /farmlab setup | list | visit <id> | corner <id> <1|2|output> | compare <cactus|cane> <ticks> | survival | creative | fast | normal | note <text> | stop

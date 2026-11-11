@@ -21,12 +21,14 @@ import org.bukkit.block.ShulkerBox;
 import org.bukkit.block.Beehive;
 import org.bukkit.block.Furnace;
 import org.bukkit.block.TileState;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.block.structure.Mirror;
 import org.bukkit.block.structure.StructureRotation;
 import org.bukkit.loot.Lootable;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BlockVector;
+import org.bukkit.util.BlockTransformer;
 
 /** Native structure serialization preserves block data, tile NBT and item components without NMS. */
 public final class PaperStasisWorld implements StasisWorld {
@@ -152,8 +154,27 @@ public final class PaperStasisWorld implements StasisWorld {
                 }
             }
             if (structure.getPaletteCount() > 0) {
+                // Growth blocks can break and drop copies if native placement checks them
+                // before the full support/light geometry is restored. Place them only below,
+                // after native blocks and tile NBT are complete, without generating drops.
+                BlockTransformer deferGrowth = (regionAccess, x, y, z, state, context) -> {
+                    if (!(state.getBlockData() instanceof Ageable)) return state;
+                    var empty = state.copy();
+                    empty.setType(Material.AIR);
+                    return empty;
+                };
                 structure.place(new Location(world, min.x(), min.y(), min.z()), false,
-                        StructureRotation.NONE, Mirror.NONE, 0, 1.0f, new Random(0));
+                        StructureRotation.NONE, Mirror.NONE, 0, 1.0f, new Random(0),
+                        java.util.List.of(deferGrowth), java.util.List.of());
+                // Native placement can reject support-dependent blocks while the rest of the
+                // template is still filler (e.g. mature wheat above farmland becomes air).
+                // Once the complete support geometry is back, enforce the saved plain block
+                // states without physics. Tile NBT remains owned by native placement.
+                for (var saved : structure.getPalettes().getFirst().getBlocks()) {
+                    if (saved instanceof TileState) continue;
+                    var target = world.getBlockAt(min.x() + saved.getX(), min.y() + saved.getY(), min.z() + saved.getZ());
+                    if (!target.getBlockData().equals(saved.getBlockData())) target.setBlockData(saved.getBlockData(), false);
+                }
             } else if (payload.voidBlocks().size() != (long) expected.getBlockX() * expected.getBlockY() * expected.getBlockZ()) {
                 throw new IllegalStateException("В снимке отсутствует палитра блоков.");
             }

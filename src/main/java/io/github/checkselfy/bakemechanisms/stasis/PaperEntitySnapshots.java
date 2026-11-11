@@ -23,7 +23,8 @@ import org.bukkit.plugin.Plugin;
 public final class PaperEntitySnapshots {
     private static final Set<EntityType> SUPPORTED = Set.of(EntityType.COW, EntityType.ZOMBIE,
             EntityType.VILLAGER, EntityType.IRON_GOLEM, EntityType.ARMOR_STAND, EntityType.MINECART,
-            EntityType.CHEST_MINECART, EntityType.HOPPER_MINECART, EntityType.ITEM, EntityType.BEE);
+            EntityType.CHEST_MINECART, EntityType.HOPPER_MINECART, EntityType.ITEM, EntityType.BEE,
+            EntityType.CHICKEN);
     private final Plugin plugin;
 
     public PaperEntitySnapshots(Plugin plugin) { this.plugin = plugin; }

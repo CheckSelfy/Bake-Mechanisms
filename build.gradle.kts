@@ -186,6 +186,34 @@ val smokeTest = sourceSets.create("smokeTest") {
     compileClasspath += sourceSets.main.get().output + configurations.compileClasspath.get()
 }
 
+// Headless correctness review; isolated from both the shipped JAR and snapshot smoke plugin.
+val correctness = sourceSets.create("correctness") {
+    compileClasspath += sourceSets.main.get().output + configurations.compileClasspath.get()
+}
+tasks.register<Jar>("correctnessJar") {
+    group = "verification"
+    archiveFileName.set("bake-correctness.jar")
+    from(correctness.output)
+}
+
+// Small extracted map fixtures, shared by manual and headless testing.
+val farmLab = sourceSets.create("farmLab") {
+    compileClasspath += sourceSets.main.get().output + configurations.compileClasspath.get()
+}
+tasks.check { dependsOn(tasks.named(farmLab.classesTaskName)) }
+tasks.register<Jar>("farmLabJar") {
+    group = "verification"
+    archiveFileName.set("bake-farm-lab.jar")
+    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*") }
+    from("test-worlds/ppl9") { into("fixtures"); exclude("README.md") }
+}
+tasks.register<Jar>("farmLabReviewJar") {
+    group = "verification"
+    archiveFileName.set("bake-farm-lab-review.jar")
+    from(farmLab.output) { include("**/FarmLabReviewPlugin*") }
+    from("src/farmLab/review-plugin.yml") { rename { "plugin.yml" } }
+}
+
 val stasisSmokeJar = tasks.register<Jar>("stasisSmokeJar") {
     archiveFileName.set("bake-stasis-smoke.jar")
     from(smokeTest.output)
@@ -218,6 +246,9 @@ tasks.register<JavaExec>("stasisSmoke") {
     doLast {
         val log = smokeDir.resolve("logs/latest.log").readText()
         if (!log.contains("BLOCK_STASIS_SMOKE_PASSED") || !log.contains("ENTITY_STASIS_SMOKE_PASSED")
+            || !log.contains("CHICKEN_STASIS_SMOKE_PASSED")
+            || !log.contains("SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED")
+            || !log.contains("FRAGILE_BLOCK_STASIS_SMOKE_PASSED")
             || !log.contains("SIGN_STASIS_SMOKE_PASSED")
             || !log.contains("EXTENDED_BLOCK_STASIS_SMOKE_PASSED")
             || !log.contains("MOVING_PISTON_STASIS_SMOKE_PASSED")

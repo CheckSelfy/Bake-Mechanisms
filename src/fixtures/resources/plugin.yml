@@ -3,6 +3,7 @@ version: '1'
 main: io.github.checkselfy.bakemechanisms.fixtures.FixturePlugin
 api-version: '26.3'
 description: Opt-in test worlds for Bake Mechanisms; not a gameplay dependency.
+loadbefore: [BakeMechanisms]
 commands:
   bakefixtures:
     description: Create and inspect isolated test worlds.

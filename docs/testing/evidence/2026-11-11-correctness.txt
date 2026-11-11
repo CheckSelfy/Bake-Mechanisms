@@ -1,0 +1,82 @@
+Selected unmodified log lines. Full local paths are relative to the repository root.
+C10 wording in the original full-run log overstates offline coverage: production was blocked by a full output.
+The report scopes that result to unchanged persisted progress, and the driver wording has been corrected.
+
+Full lifecycle, first process: run/correctness-review-05/restart_ready.log
+[15:47:06] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=16 world=bake_blocks farm=f90358b1-943e-4eb3-942b-898ab7c62251; production wand, synthetic events, reversed corners, real non-OP creator
+[15:47:06] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=16 world=bake_blocks farm=9c1a2ada-ad8e-4f4b-8dc7-59774ac1ea92; production wand, synthetic events, reversed corners, real non-OP creator
+[15:47:43] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C04_EMPTY_SATURATED tick=3616 3600 actual ticks: zero output rejected; saturated profile uses 200 ticks and rate=0.1; short-segment rejection disabled
+[15:49:06] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C02_WARMUP tick=12016 12000 actual server ticks; randomTickSpeed=3; two nearby clients
+[15:51:06] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C02 tick=24016 12000 ticks natural output blocks={CACTUS=13} entities={EGG=8}
+[15:51:06] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=24016 world=bake_blocks farm=e9f01948-0280-4439-b3b7-3171c4513682; production wand, synthetic events, reversed corners, real non-OP creator
+[15:51:07] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=24016 world=bake_entities farm=f95a3a44-04ef-45ea-b826-f7fd8f8bf661; production wand, synthetic events, reversed corners, real non-OP creator
+[15:51:07] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_RIGHTS tick=24016 noncreator lifecycle commands denied and UUID absent from completion
+[15:51:07] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C04_CANCEL tick=24016 production /bake profile + cancel; original retained and tickets released
+[15:51:43] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C03 tick=27616 3600 ticks, baseline excluded; profiles=ProductionProfile[ratesPer20Ticks={CACTUS=0.03888888888888889}, usefulTicks=3600] / ProductionProfile[ratesPer20Ticks={DIAMOND_SWORD=0.005555555555555556, EGG=0.03888888888888889}, usefulTicks=3600]
+[15:51:43] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C05_OCCUPIED tick=27616 player inside: command refused, READY retained, player not teleported
+[15:51:43] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C05 tick=27616 both cuboids entirely bedrock; original chickens absent; only output tickets retained
+[15:52:23] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31616 farm=e9f01948-0280-4439-b3b7-3171c4513682 type=CACTUS ticks=4000 produced=7 fraction=0.77777777777777800
+[15:52:23] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31616 farm=f95a3a44-04ef-45ea-b826-f7fd8f8bf661 type=DIAMOND_SWORD ticks=4000 produced=1 fraction=0.111111111111111200
+[15:52:23] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=31616 farm=f95a3a44-04ef-45ea-b826-f7fd8f8bf661 type=EGG ticks=4000 produced=7 fraction=0.77777777777777800
+[15:52:23] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C06_C07 tick=31616 exact 4000-tick inventory + buffer + fraction accounting for every type; plain swords; no XP orbs
+[15:52:23] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C09_ENTITIES tick=31616 8 chickens and snapshot-marker inventory restored; profile invalidated
+[15:53:01] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C08_PAUSE tick=35416 full output: identical buffer/fractions for 3600 ticks; no overflow drops
+[15:53:03] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS RESTART_READY tick=35616 one STASIS farm with full output/nonempty buffer; one unfinished PROFILING farm
+
+Full lifecycle, second process: run/correctness-review-05/correctness_passed.log
+[15:53:12] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C10 tick=12 real process restart: active filler/snapshot/profile/buffer/fractions retained; unfinished profile cancelled; no offline accrual
+[15:53:14] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS ACCOUNTING tick=212 farm=e9f01948-0280-4439-b3b7-3171c4513682 type=CACTUS ticks=200 produced=1 fraction=0.40000000000000024
+[15:53:14] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C08_RESUME tick=212 freed output: pending buffer delivered and exact production resumed
+[15:53:14] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C09_BLOCKS tick=212 cactus, hoppers, internal marker restored after process restart
+[15:53:50] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C11 tick=3812 repeat profile/stasis/restore; READY edit invalidation; creator-only confirmed deletion; all files/tickets released
+[15:53:50] [Server thread/INFO]: [BakeTestFixtures] FIXTURES_CHECK_OK farms=2
+[15:53:50] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS CORRECTNESS_PASSED tick=3812 headless automated subset complete; synthetic input boundaries documented
+
+Short-profile rejection enabled: run/correctness-short-profile/short_profile_passed.log
+[15:54:43] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=15 world=bake_blocks farm=b48d5cf4-0fe0-4b29-94a1-41523541bc9b; production wand, synthetic events, reversed corners, real non-OP creator
+[15:54:43] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS C01_REGISTER tick=15 world=bake_blocks farm=3d812703-1cd9-4508-b44a-da134f6c1d44; production wand, synthetic events, reversed corners, real non-OP creator
+[15:55:19] [Server thread/INFO]: [BakeCorrectness] REVIEW_PASS SHORT_PROFILE_PASSED tick=3615 3600 actual ticks: 200-tick saturated segment rejected with 600-tick minimum enabled; zero output also rejected
+
+Native snapshot regression after fix: run/stasis-smoke/logs/latest.log
+[15:38:10] [Server thread/INFO]: [BakeStasisSmoke] SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED
+[15:38:10] [Server thread/INFO]: [BakeStasisSmoke] CHICKEN_STASIS_SMOKE_PASSED: UUID/name/PDC/location/age/age-lock/egg timer; disk recovery and failed-restore retry
+[15:38:10] [Server thread/INFO]: [BakeStasisSmoke] ENTITY_STASIS_SMOKE_PASSED
+[15:38:10] [Server thread/INFO]: [BakeStasisSmoke] SIGN_STASIS_SMOKE_PASSED: 52 sign materials
+[15:38:11] [Server thread/INFO]: [BakeStasisSmoke] EXTENDED_BLOCK_STASIS_SMOKE_PASSED: 41 materials
+[15:38:11] [Server thread/INFO]: [BakeStasisSmoke] BLOCK_STASIS_SMOKE_PASSED
+[15:38:13] [Server thread/INFO]: [BakeStasisSmoke] MOVING_PISTON_STASIS_SMOKE_PASSED: 4 deferred cases
+
+Native chicken regression before fix: run/chicken-regression-before-fix.log
+[15:37:01] [Server thread/INFO]: [BakeStasisSmoke] SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED
+[15:37:01] [Server thread/ERROR]: [BakeStasisSmoke] BLOCK_STASIS_SMOKE_FAILED
+java.lang.IllegalArgumentException: Снимок не сохранён, мир не изменён: Нет проверенного сериализатора сущности CHICKEN
+Caused by: java.lang.IllegalStateException: Нет проверенного сериализатора сущности CHICKEN
+
+run/correctness-review-05/review-environment.json
+{
+  "commit": "101813e3a0622175922a6d9aded89f01f7132f35",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "a268360b9e57b715f5d83b359b27439e5fa481cc738f79935182e6818bc6f3ba",
+    "bake-mechanisms.jar": "ab16d4d6481735633beeff388a44cafb0d8485a3d18f6c664e13d5262a739e1f",
+    "bake-test-fixtures.jar": "690aef770f581e44d9180f574210a01b0481dad3b4ebd5fdb7c3a154eb351559"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+}
+
+run/correctness-short-profile/review-environment.json
+{
+  "commit": "101813e3a0622175922a6d9aded89f01f7132f35",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "java": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)\n",
+  "sha256": {
+    "bake-correctness.jar": "df61b0f749504ab0935652cdc9b74a7890009034f25a38a43364909b3bb719df",
+    "bake-mechanisms.jar": "ab16d4d6481735633beeff388a44cafb0d8485a3d18f6c664e13d5262a739e1f",
+    "bake-test-fixtures.jar": "690aef770f581e44d9180f574210a01b0481dad3b4ebd5fdb7c3a154eb351559"
+  },
+  "paper": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c",
+  "short_profile_only": true,
+  "note": "Working-tree changes may exist; plugin hashes identify the actual binaries."
+}
