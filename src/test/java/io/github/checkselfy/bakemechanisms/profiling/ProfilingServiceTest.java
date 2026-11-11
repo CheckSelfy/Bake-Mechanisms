@@ -260,6 +260,36 @@ class ProfilingServiceTest {
         assertEquals(Map.of(Material.STRING, 1.0), profile.ratesPer20Ticks());
     }
 
+    @Test
+    void progressEventsFollowServerTicksAndSessionLifecycle() {
+        var events = new ArrayList<String>();
+        var listener = new ProfilingService.ProgressListener() {
+            @Override public void started(FarmRegistry.MarkedFarm farm) {
+                events.add("start:" + farm.id());
+            }
+
+            @Override public void progressed(FarmRegistry.MarkedFarm farm, long elapsedTicks) {
+                events.add("tick:" + elapsedTicks);
+            }
+
+            @Override public void ended(UUID farmId) {
+                events.add("end:" + farmId);
+            }
+        };
+        var observed = new ProfilingService(registry, world, ProfilingSettings.DEFAULT, new ChunkTickets(world),
+                farmId -> false, listener);
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(50));
+        world.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
+
+        observed.start(farm.id(), creator);
+        observed.tick();
+        observed.tick();
+        observed.cancel(farm.id(), creator);
+
+        assertEquals(List.of("start:" + farm.id(), "tick:1", "tick:2", "end:" + farm.id()), events);
+        assertEquals(1, world.reads, "progress callbacks do not sample the output");
+    }
+
     private void tick(int ticks) {
         for (int i = 0; i < ticks; i++) {
             world.advance();
