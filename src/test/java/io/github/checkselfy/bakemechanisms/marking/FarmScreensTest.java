@@ -27,38 +27,87 @@ class FarmScreensTest {
     private final FarmRegistry registry = new FarmRegistry(FarmRegistry.DEFAULT_MAX_VOLUME);
     private final Player player = mock(Player.class);
     private final List<FarmScreen> opened = new ArrayList<>();
+    private int refreshed;
     private final List<List<String>> commands = new ArrayList<>();
     private FarmScreens screens;
 
     @BeforeEach
     void setup() {
         when(player.getUniqueId()).thenReturn(creator);
-        screens = new FarmScreens(registry, (viewer, args) -> commands.add(List.of(args)),
-                (viewer, screen) -> opened.add(screen), Runnable::run);
+        var opener = new FarmScreens.Opener() {
+            @Override public void open(Player viewer, FarmScreen screen) { opened.add(screen); }
+            @Override public void refresh(Player viewer, FarmScreen screen) { refreshed++; }
+        };
+        screens = new FarmScreens(registry, (viewer, args) -> commands.add(List.of(args)), opener, Runnable::run);
     }
 
     @Test
-    void listShowsEveryStateWithItsOwnBlock() {
-        var needs = farm(creator, "Needs", 0);
-        var profiling = farm(creator, "Profiling", 1);
-        registry.markProfiling(profiling.id());
-        var ready = ready(farm(creator, "Ready", 2));
-        var stasis = ready(farm(creator, "Stasis", 3));
-        registry.markStasis(stasis.id());
+    void everyStateIsItsOwnBlockWithAShortLabel() {
+        farm(creator, "Needs", 0);
+        registry.markProfiling(farm(creator, "Profiling", 1).id());
+        ready(farm(creator, "Ready", 2));
+        registry.markStasis(ready(farm(creator, "Stasis", 3)).id());
 
         screens.openList(player);
 
-        var blocks = Map.of("Needs", Material.YELLOW_CONCRETE, "Profiling", Material.OBSERVER,
-                "Ready", Material.EMERALD_BLOCK, "Stasis", Material.BEDROCK);
-        var icons = last().icons();
-        assertEquals(4, icons.size());
-        for (var icon : icons.values()) {
-            var name = icon.name();
-            assertEquals(blocks.get(name), icon.material(), name);
-        }
-        assertTrue(lore("Ready").stream().anyMatch(line -> line.contains("READY")), lore("Ready").toString());
-        assertNotNull(needs);
-        assertNotNull(ready);
+        var expected = Map.of("Needs", Map.entry(Material.YELLOW_CONCRETE, "Ждёт профилирования"),
+                "Profiling", Map.entry(Material.OBSERVER, "Идёт профилирование"),
+                "Ready", Map.entry(Material.EMERALD_BLOCK, "Готова к стазису"),
+                "Stasis", Map.entry(Material.BEDROCK, "В стазисе"));
+        expected.forEach((name, state) -> {
+            var icon = icon(slotOf(name));
+            assertEquals(state.getKey(), icon.material(), name);
+            assertEquals(state.getValue(), icon.lore().getFirst(), name);
+        });
+    }
+
+    @Test
+    void availableActionsSitRightNextToTheStatusBlock() {
+        var needs = farm(creator, "Needs", 0);
+        registry.markProfiling(farm(creator, "Profiling", 1).id());
+        ready(farm(creator, "Ready", 2));
+        registry.markStasis(ready(farm(creator, "Stasis", 3)).id());
+        screens.openList(player);
+
+        assertActions("Needs", Material.CLOCK, Material.LAVA_BUCKET);
+        assertActions("Profiling", null, null);
+        assertActions("Ready", Material.BLUE_ICE, Material.LAVA_BUCKET);
+        assertActions("Stasis", Material.CAMPFIRE, null);
+        assertEquals(1, opened.size(), "no separate screen per farm");
+
+        click(slotOf("Needs") + 1);
+        assertEquals(List.of(List.of("profile", "--id", needs.id().toString())), commands);
+        verify(player).closeInventory();
+    }
+
+    @Test
+    void stasisAndUnstasisRunTheirCommands() {
+        var ready = ready(farm(creator, "Ready", 0));
+        var stasis = ready(farm(creator, "Stasis", 1));
+        registry.markStasis(stasis.id());
+        screens.openList(player);
+        click(slotOf("Ready") + 1);
+        screens.openList(player);
+        click(slotOf("Stasis") + 1);
+        assertEquals(List.of(List.of("stasis", "--id", ready.id().toString()),
+                List.of("unstasis", "--id", stasis.id().toString())), commands);
+    }
+
+    @Test
+    void deleteIsConfirmedInPlaceBySecondClick() {
+        var farm = farm(creator, "Iron", 0);
+        var id = farm.id().toString();
+        screens.openList(player);
+        int delete = slotOf("Iron") + 2;
+
+        click(delete);
+        assertEquals(List.of(List.of("unregister", "--id", id)), commands, "the request explains what is deleted");
+        assertEquals(1, opened.size(), "confirmation stays on the same screen");
+        assertEquals(1, refreshed);
+        assertEquals(Material.TNT, icon(delete).material());
+
+        click(delete);
+        assertEquals(List.of("unregister", "--id", id, "confirm"), commands.getLast());
     }
 
     @Test
@@ -66,7 +115,8 @@ class FarmScreensTest {
         farm(creator, "Mine", 0);
         farm(UUID.randomUUID(), "Theirs", 1);
         screens.openList(player);
-        assertEquals(List.of("Mine"), last().icons().values().stream().map(FarmScreen.Icon::name).toList());
+        assertTrue(last().icons().values().stream().anyMatch(icon -> icon.name().equals("Mine")));
+        assertTrue(last().icons().values().stream().noneMatch(icon -> icon.name().equals("Theirs")));
     }
 
     @Test
@@ -77,98 +127,21 @@ class FarmScreensTest {
     }
 
     @Test
-    void farmScreenOffersOnlyTheActionsItsStateAllows() {
+    void screenItemsCannotBeTakenMovedOrDraggedAndLeavingActsOnce() {
         var farm = ready(farm(creator, "Iron", 0));
         screens.openList(player);
-        click(slotOf("Iron"));
-        var screen = last();
-        assertEquals(Material.EMERALD_BLOCK, screen.icons().get(FarmScreens.STATUS_SLOT).material());
-
-        click(FarmScreens.PROFILE_SLOT);
-        click(FarmScreens.UNSTASIS_SLOT);
-        assertTrue(commands.isEmpty(), "unavailable actions do nothing");
-        assertEquals(Material.GRAY_DYE, screen.icons().get(FarmScreens.PROFILE_SLOT).material());
-        assertEquals(Material.GRAY_DYE, screen.icons().get(FarmScreens.UNSTASIS_SLOT).material());
-
-        click(FarmScreens.STASIS_SLOT);
-        assertEquals(List.of(List.of("stasis", "--id", farm.id().toString())), commands);
-        verify(player).closeInventory();
-    }
-
-    @Test
-    void eachStateEnablesItsActions() {
-        var needs = farm(creator, "Needs", 0);
-        var stasis = ready(farm(creator, "Stasis", 1));
-        registry.markStasis(stasis.id());
-
-        screens.openList(player);
-        click(slotOf("Needs"));
-        click(FarmScreens.PROFILE_SLOT);
-        screens.openList(player);
-        click(slotOf("Stasis"));
-        click(FarmScreens.UNSTASIS_SLOT);
-
-        assertEquals(List.of(List.of("profile", "--id", needs.id().toString()),
-                List.of("unstasis", "--id", stasis.id().toString())), commands);
-    }
-
-    @Test
-    void deleteAsksForConfirmationAndCanBeCancelled() {
-        var farm = farm(creator, "Iron", 0);
-        var id = farm.id().toString();
-        screens.openList(player);
-        click(slotOf("Iron"));
-        click(FarmScreens.DELETE_SLOT);
-        assertEquals(List.of(List.of("unregister", "--id", id)), commands, "the request shows what is deleted");
-        assertEquals(FarmScreen.Kind.CONFIRM_DELETE, last().kind());
-
-        click(FarmScreens.CANCEL_SLOT);
-        assertEquals(FarmScreen.Kind.FARM, last().kind());
-        assertEquals(1, commands.size());
-
-        click(FarmScreens.DELETE_SLOT);
-        click(FarmScreens.CONFIRM_SLOT);
-        assertEquals(List.of("unregister", "--id", id, "confirm"), commands.getLast());
-        assertEquals(FarmScreen.Kind.LIST, last().kind());
-    }
-
-    @Test
-    void farmInStasisOrProfilingCannotBeDeletedFromTheScreen() {
-        var farm = farm(creator, "Iron", 0);
-        registry.markProfiling(farm.id());
-        screens.openList(player);
-        click(slotOf("Iron"));
-        click(FarmScreens.DELETE_SLOT);
-        assertTrue(commands.isEmpty());
-        assertEquals(FarmScreen.Kind.FARM, last().kind());
-    }
-
-    @Test
-    void backReturnsToTheList() {
-        farm(creator, "Iron", 0);
-        screens.openList(player);
-        click(slotOf("Iron"));
-        click(FarmScreens.BACK_SLOT);
-        assertEquals(FarmScreen.Kind.LIST, last().kind());
-    }
-
-    @Test
-    void screenItemsCannotBeTakenMovedOrDraggedAndActOnce() {
-        var farm = ready(farm(creator, "Iron", 0));
-        screens.openList(player);
-        click(slotOf("Iron"));
+        int stasis = slotOf("Iron") + 1;
         for (var type : List.of(ClickType.SHIFT_LEFT, ClickType.NUMBER_KEY, ClickType.DOUBLE_CLICK, ClickType.DROP)) {
-            assertTrue(click(FarmScreens.STASIS_SLOT, type, true).isCancelled(), type.name());
+            assertTrue(click(stasis, type, true).isCancelled(), type.name());
         }
-        assertTrue(click(FarmScreens.STASIS_SLOT, ClickType.LEFT, false).isCancelled());
+        assertTrue(click(stasis, ClickType.LEFT, false).isCancelled());
         assertTrue(commands.isEmpty());
-        var screen = last();
-        click(FarmScreens.STASIS_SLOT);
-        clickOn(screen, FarmScreens.STASIS_SLOT);
+        click(stasis);
+        click(stasis);
         assertEquals(List.of(List.of("stasis", "--id", farm.id().toString())), commands);
 
         var drag = mock(InventoryDragEvent.class);
-        var view = view(screen);
+        var view = view(last());
         when(drag.getView()).thenReturn(view);
         screens.onDrag(drag);
         verify(drag).setCancelled(true);
@@ -178,11 +151,22 @@ class FarmScreensTest {
     void manyFarmsArePaged() {
         for (int i = 0; i < FarmScreens.FARMS_PER_PAGE + 1; i++) farm(creator, "F" + i, i);
         screens.openList(player);
-        assertEquals(FarmScreens.FARMS_PER_PAGE + 1, last().icons().size(), "a page of farms and the next arrow");
+        assertTrue(last().icons().values().stream().noneMatch(icon -> icon.name().equals("F" + FarmScreens.FARMS_PER_PAGE)));
         click(FarmScreens.NEXT_SLOT);
         assertTrue(last().icons().values().stream().anyMatch(icon -> icon.name().equals("F" + FarmScreens.FARMS_PER_PAGE)));
         click(FarmScreens.PREVIOUS_SLOT);
         assertTrue(last().icons().values().stream().anyMatch(icon -> icon.name().equals("F0")));
+    }
+
+    private void assertActions(String farm, Material main, Material delete) {
+        int status = slotOf(farm);
+        assertEquals(main, material(status + 1), farm + " main action");
+        assertEquals(delete, material(status + 2), farm + " delete");
+    }
+
+    private Material material(int slot) {
+        var icon = last().icons().get(slot);
+        return icon == null ? null : icon.material();
     }
 
     private FarmRegistry.MarkedFarm farm(UUID owner, String name, int index) {
@@ -201,8 +185,8 @@ class FarmScreensTest {
         return opened.getLast();
     }
 
-    private List<String> lore(String name) {
-        return last().icons().values().stream().filter(icon -> icon.name().equals(name)).findFirst().orElseThrow().lore();
+    private FarmScreen.Icon icon(int slot) {
+        return last().icons().get(slot);
     }
 
     private int slotOf(String name) {
@@ -214,14 +198,6 @@ class FarmScreensTest {
         click(slot, ClickType.LEFT, true);
     }
 
-    private void clickOn(FarmScreen screen, int slot) {
-        click(screen, slot, ClickType.LEFT, true);
-    }
-
-    private InventoryClickEvent click(int slot, ClickType type, boolean inScreen) {
-        return click(last(), slot, type, inScreen);
-    }
-
     private InventoryView view(FarmScreen screen) {
         var view = mock(InventoryView.class);
         var top = mock(Inventory.class);
@@ -230,8 +206,8 @@ class FarmScreensTest {
         return view;
     }
 
-    private InventoryClickEvent click(FarmScreen screen, int slot, ClickType type, boolean inScreen) {
-        var view = view(screen);
+    private InventoryClickEvent click(int slot, ClickType type, boolean inScreen) {
+        var view = view(last());
         var bottom = mock(Inventory.class);
         when(view.getBottomInventory()).thenReturn(bottom);
         var event = spy(new InventoryClickEvent(view, InventoryType.SlotType.CONTAINER,
