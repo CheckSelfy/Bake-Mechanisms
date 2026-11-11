@@ -1,0 +1,5 @@
+name: BakeFarmLabReview
+version: '1'
+main: io.github.checkselfy.bakemechanisms.lab.FarmLabReviewPlugin
+api-version: '26.3'
+depend: [BakeMechanisms, BakeFarmLab]

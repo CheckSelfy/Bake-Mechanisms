@@ -1,0 +1,91 @@
+{
+  "source_name": "ppl9-farm",
+  "regions_sha256": {
+    "r.0.0.mca": "f98e717f46cd86e0845193bf55b6535914bc30bdf21da71769d60cfc067ebf48",
+    "r.0.-1.mca": "4bbb27eabbc954f749923ac026d59c52e5cdcabe287c7b31e8e702b6893f4a98"
+  },
+  "structures": {
+    "cactus": {
+      "file": "cactus.nbt",
+      "sha256": "643b0f357dcea3d409b5c938069df3f0283634f92ea16721536e9e6397e9641c",
+      "source_data_version": 4082,
+      "size": [
+        10,
+        40,
+        9
+      ],
+      "block_counts": {
+        "minecraft:mossy_stone_brick_slab": 70,
+        "minecraft:tuff_bricks": 249,
+        "minecraft:air": 1845,
+        "minecraft:water": 27,
+        "minecraft:polished_tuff": 18,
+        "minecraft:trapped_chest": 1,
+        "minecraft:mossy_stone_bricks": 16,
+        "minecraft:polished_andesite": 8,
+        "minecraft:hopper": 1,
+        "minecraft:farmland": 6,
+        "minecraft:bricks": 515,
+        "minecraft:andesite": 4,
+        "minecraft:white_stained_glass": 15,
+        "minecraft:polished_granite": 63,
+        "minecraft:brick_wall": 85,
+        "minecraft:redstone_ore": 4,
+        "minecraft:granite": 67,
+        "minecraft:terracotta": 139,
+        "minecraft:red_terracotta": 79,
+        "minecraft:wheat": 6,
+        "minecraft:stripped_mangrove_wood": 5,
+        "minecraft:granite_wall": 76,
+        "minecraft:lantern": 1,
+        "minecraft:birch_leaves": 12,
+        "minecraft:moss_block": 91,
+        "minecraft:oak_slab": 32,
+        "minecraft:sand": 32,
+        "minecraft:cactus": 32,
+        "minecraft:oak_fence": 16,
+        "minecraft:glow_lichen": 4,
+        "minecraft:oak_leaves": 30,
+        "minecraft:azalea_leaves": 3,
+        "minecraft:cyan_stained_glass": 1,
+        "minecraft:stripped_mangrove_log": 1,
+        "minecraft:stone_bricks": 14,
+        "minecraft:mud_bricks": 7,
+        "minecraft:tuff_brick_wall": 12,
+        "minecraft:brick_slab": 7,
+        "minecraft:waxed_exposed_cut_copper_stairs": 6
+      }
+    },
+    "cane": {
+      "file": "cane.nbt",
+      "sha256": "56d9db59de0a5a6191057671425a90eccddee27e86b2ef0a83c62561d527821e",
+      "source_data_version": 4082,
+      "size": [
+        7,
+        7,
+        17
+      ],
+      "block_counts": {
+        "minecraft:dirt": 289,
+        "minecraft:hopper": 2,
+        "minecraft:grass_block": 33,
+        "minecraft:deepslate": 7,
+        "minecraft:water": 21,
+        "minecraft:oak_trapdoor": 2,
+        "minecraft:deepslate_bricks": 126,
+        "minecraft:stonecutter": 1,
+        "minecraft:oak_door": 4,
+        "minecraft:crafting_table": 2,
+        "minecraft:air": 227,
+        "minecraft:sugar_cane": 27,
+        "minecraft:furnace": 1,
+        "minecraft:oak_wall_sign": 5,
+        "minecraft:glass": 55,
+        "minecraft:piston": 14,
+        "minecraft:wall_torch": 2,
+        "minecraft:redstone_wire": 13,
+        "minecraft:observer": 2
+      }
+    }
+  }
+}

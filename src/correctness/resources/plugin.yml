@@ -1,0 +1,5 @@
+name: BakeCorrectness
+version: '1'
+main: io.github.checkselfy.bakemechanisms.correctness.CorrectnessPlugin
+api-version: '26.3'
+depend: [BakeMechanisms, BakeTestFixtures]

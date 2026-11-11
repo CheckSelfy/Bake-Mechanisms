@@ -1,0 +1,43 @@
+Full imported-farm run: run/farm-lab-headless-03/logs/latest.log
+[16:34:41] [Server thread/INFO]: [BakeFarmLab] FARM_LAB_IMPORTED cactus source=19,64,18..28,103,26 mechanism=0,64,0..9,103,8 output=2,65,-1
+[16:34:41] [Server thread/INFO]: [BakeFarmLab] FARM_LAB_IMPORTED cane source=168,73,-5..174,79,11 mechanism=64,64,0..70,70,16 output=63,64,8
+[16:34:41] [Server thread/INFO]: [BakeFarmLab] FARM_LAB_READY farms=2 world=farm_lab
+[16:35:23] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_WARMUP tick=4019 elapsed=4000
+[16:36:03] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_WARMUP tick=8019 elapsed=8000
+[16:36:43] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_WARMUP tick=12019 elapsed=12000
+[16:36:43] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_FAST_GROWTH tick=12019 profiling randomTickSpeed=30; warmup used 3; functional test, not a vanilla yield benchmark
+[16:36:43] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_NATURAL_OUTPUT tick=12019 cactus ticks=12000 output={CACTUS=5}
+[16:36:43] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_NATURAL_OUTPUT tick=12019 cane ticks=12000 output={SUGAR_CANE=1}
+[16:37:19] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_PROFILE tick=15619 cactus ProductionProfile[ratesPer20Ticks={CACTUS=0.12777777777777777}, usefulTicks=3600]
+[16:37:19] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_PROFILE tick=15619 cane ProductionProfile[ratesPer20Ticks={SUGAR_CANE=0.03888888888888889}, usefulTicks=3600]
+[16:37:39] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_ACCOUNTING tick=17619 cactus ticks=2000 type=CACTUS produced=12 fraction=0.77777777777777700
+[16:37:39] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_RESTORE tick=17619 cactus all block states and internal inventories restored; old profile invalidated
+[16:37:39] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_ACCOUNTING tick=17619 cane ticks=2000 type=SUGAR_CANE produced=3 fraction=0.88888888888888900
+[16:37:39] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_RESTORE tick=17619 cane all block states and internal inventories restored; old profile invalidated
+[16:37:39] [Server thread/INFO]: [BakeFarmLabReview] FARM_LAB_REVIEW_PASSED tick=17619 both extracted farm fixtures; real non-OP commands, synthetic wand inputs
+
+Native snapshot regression after fix: run/stasis-smoke/logs/latest.log
+[16:34:04] [Server thread/INFO]: [BakeStasisSmoke] SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED
+[16:34:04] [Server thread/INFO]: [BakeStasisSmoke] CHICKEN_STASIS_SMOKE_PASSED: UUID/name/PDC/location/age/age-lock/egg timer; disk recovery and failed-restore retry
+[16:34:04] [Server thread/INFO]: [BakeStasisSmoke] ENTITY_STASIS_SMOKE_PASSED
+[16:34:04] [Server thread/INFO]: [BakeStasisSmoke] SIGN_STASIS_SMOKE_PASSED: 52 sign materials
+[16:34:05] [Server thread/INFO]: [BakeStasisSmoke] EXTENDED_BLOCK_STASIS_SMOKE_PASSED: 41 materials
+[16:34:05] [Server thread/INFO]: [BakeStasisSmoke] BLOCK_STASIS_SMOKE_PASSED
+[16:34:07] [Server thread/INFO]: [BakeStasisSmoke] MOVING_PISTON_STASIS_SMOKE_PASSED: 4 deferred cases
+[16:34:07] [Server thread/INFO]: [BakeStasisSmoke] FRAGILE_BLOCK_STASIS_SMOKE_PASSED: mature wheat retained after placement and subsequent ticks
+
+Native snapshot diagnosis before fix: run/wheat-regression-diagnosis.log
+[16:31:14] [Server thread/INFO]: [BakeStasisSmoke] [DEBUG-farm-crop] saved=minecraft:wheat[age=7] relative=4,1,3 actual=minecraft:air support=FARMLAND light=15
+[16:31:14] [Server thread/ERROR]: [BakeStasisSmoke] BLOCK_STASIS_SMOKE_FAILED
+java.lang.AssertionError: block data mismatch at BlockPosition[worldId=9ec20185-5290-4a57-8df7-4fad6383629d, x=4, y=301, z=3]
+
+Environment:
+{
+  "plugins_sha256": {
+    "bake-mechanisms.jar": "66d243350d5d6ba87a78fb3a9abe64d9d1bf3b49e8ce987b70672c00d90fd973",
+    "bake-farm-lab.jar": "314b77a7506b087e480d51b24ffe21a0ebd1ef08296fd1fee4a03d1fcf405c23",
+    "bake-farm-lab-review.jar": "09455777ef3e064d183b70d2793eb606dafcee139955397e74f50cea62b8a8b5"
+  },
+  "source": "test-worlds/ppl9/farms.json and structures/*.nbt",
+  "paper_sha256": "d158542561e440c4026be7ccb32f551ee88313864792f38ea0ce5d1b88f1b27c"
+}

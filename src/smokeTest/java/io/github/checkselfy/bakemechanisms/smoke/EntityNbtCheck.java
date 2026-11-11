@@ -85,6 +85,9 @@ public final class EntityNbtCheck {
         for (int x = 160; x <= 239; x++) for (int y = 296; y <= 319; y++) for (int z = 0; z <= 79; z++) {
             world.getBlockAt(x, y, z).setType(y == 296 ? Material.STONE : Material.AIR, false);
         }
+        // Far beyond the anchor chunk's transformer region: regression for the integration with #29.
+        world.getBlockAt(239, 296, 79).setType(Material.FARMLAND, false);
+        world.getBlockAt(239, 297, 79).setBlockData(plugin.getServer().createBlockData("minecraft:wheat[age=7]"), false);
         var registry = new FarmRegistry(FarmRegistry.DEFAULT_MAX_VOLUME);
         var output = world.getBlockAt(256, 296, 0);
         output.setType(Material.BARREL, false);
@@ -173,6 +176,9 @@ public final class EntityNbtCheck {
     }
 
     private void assertEntities(YamlConfiguration expected, java.util.Set<UUID> ids) throws java.io.IOException {
+        require(world.getBlockAt(239, 297, 79).getType() == Material.WHEAT
+                && ((org.bukkit.block.data.Ageable) world.getBlockAt(239, 297, 79).getBlockData()).getAge() == 7,
+                "Mature wheat lost at the far corner of a multi-chunk snapshot");
         var actualIds = nearby().stream().map(Entity::getUniqueId).collect(Collectors.toSet());
         require(nearby().size() == ids.size(), "Duplicate entity instances after restore");
         require(actualIds.equals(ids), "Composition/UUID mismatch: expected=" + ids + ", actual=" + actualIds);

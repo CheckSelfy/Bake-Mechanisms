@@ -21,6 +21,7 @@ import org.bukkit.block.ShulkerBox;
 import org.bukkit.block.Beehive;
 import org.bukkit.block.Furnace;
 import org.bukkit.block.TileState;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.block.structure.Mirror;
 import org.bukkit.block.structure.StructureRotation;
 import org.bukkit.loot.Lootable;
@@ -162,8 +163,26 @@ public final class PaperStasisWorld implements StasisWorld {
                 }
             }
             if (structure.getPaletteCount() > 0) {
+                // Paper's transformer accessor is limited to the anchor chunk and its neighbours.
+                // Prepare the complete plain support geometry first, then crops, without physics.
+                // Native placement sees their final states and still owns all tile NBT.
+                var savedBlocks = structure.getPalettes().getFirst().getBlocks();
+                for (boolean growth : new boolean[] { false, true }) for (var saved : savedBlocks) {
+                    if (saved instanceof TileState || (saved.getBlockData() instanceof Ageable) != growth) continue;
+                    world.getBlockAt(min.x() + saved.getX(), min.y() + saved.getY(), min.z() + saved.getZ())
+                            .setBlockData(saved.getBlockData(), false);
+                }
                 structure.place(new Location(world, min.x(), min.y(), min.z()), false,
                         StructureRotation.NONE, Mirror.NONE, 0, 1.0f, new Random(0));
+                // Native placement can reject support-dependent blocks while the rest of the
+                // template is still filler (e.g. mature wheat above farmland becomes air).
+                // Once the complete support geometry is back, enforce the saved plain block
+                // states without physics. Tile NBT remains owned by native placement.
+                for (var saved : structure.getPalettes().getFirst().getBlocks()) {
+                    if (saved instanceof TileState) continue;
+                    var target = world.getBlockAt(min.x() + saved.getX(), min.y() + saved.getY(), min.z() + saved.getZ());
+                    if (!target.getBlockData().equals(saved.getBlockData())) target.setBlockData(saved.getBlockData(), false);
+                }
             } else if (payload.voidBlocks().size() != (long) expected.getBlockX() * expected.getBlockY() * expected.getBlockZ()) {
                 throw new IllegalStateException("В снимке отсутствует палитра блоков.");
             }

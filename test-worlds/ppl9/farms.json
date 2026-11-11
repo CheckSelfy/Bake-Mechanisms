@@ -1,0 +1,54 @@
+{
+  "format": 1,
+  "layout_version": 2,
+  "world": "farm_lab",
+  "source": "ppl9-farm, user-provided Minecraft 1.21.3 world",
+  "farms": [
+    {
+      "id": "cactus",
+      "template": "cactus",
+      "source_min": [19, 64, 18],
+      "source_max": [28, 103, 26],
+      "destination": [0, 64, 0],
+      "size": [10, 40, 9],
+      "output": [2, 65, -1],
+      "product": "CACTUS",
+      "adaptations": ["Replace the trapped-chest half at (2,65,0) with a north-facing hopper; use an external barrel at (2,65,-1).", "Remove the three decorative edge water sources at relative (0,1,0)..(0,1,2)."]
+    },
+    {
+      "id": "cane",
+      "template": "cane",
+      "source_min": [168, 73, -5],
+      "source_max": [174, 79, 11],
+      "destination": [64, 64, 0],
+      "size": [7, 7, 17],
+      "output": [63, 64, 8],
+      "product": "SUGAR_CANE",
+      "adaptations": ["Join the two existing collection hoppers with north-facing hoppers at (64,64,9)..(64,64,14); route (64,64,8) west to an external barrel at (63,64,8).", "Cap the two collection openings with external glass at (63,65,8) and (63,65,14)."]
+    },
+    {
+      "id": "cactus-control",
+      "template": "cactus",
+      "comparison_of": "cactus",
+      "source_min": [19, 64, 18],
+      "source_max": [28, 103, 26],
+      "destination": [32, 64, 0],
+      "size": [10, 40, 9],
+      "output": [34, 65, -1],
+      "product": "CACTUS",
+      "adaptations": ["Same adapted cactus mechanism, translated 32 blocks east; independent output barrel."]
+    },
+    {
+      "id": "cane-control",
+      "template": "cane",
+      "comparison_of": "cane",
+      "source_min": [168, 73, -5],
+      "source_max": [174, 79, 11],
+      "destination": [96, 64, 0],
+      "size": [7, 7, 17],
+      "output": [95, 64, 8],
+      "product": "SUGAR_CANE",
+      "adaptations": ["Same adapted cane mechanism, translated 32 blocks east; independent output barrel and glass caps."]
+    }
+  ]
+}

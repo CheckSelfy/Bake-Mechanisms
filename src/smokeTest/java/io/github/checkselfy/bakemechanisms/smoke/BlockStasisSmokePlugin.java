@@ -11,6 +11,10 @@ import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
 import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
 import io.github.checkselfy.bakemechanisms.stasis.StasisService;
 import io.github.checkselfy.bakemechanisms.stasis.StasisWorld;
+import io.github.checkselfy.bakemechanisms.stasis.SnapshotStore;
+import io.github.checkselfy.bakemechanisms.stasis.SavedSnapshot;
+import java.io.IOException;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +46,15 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                 checkSnapshots();
                 getLogger().info("BLOCK_STASIS_SMOKE_PASSED");
                 MovingPistonCheck.run(this, error -> {
+                    if (error == null) {
+                        try {
+                            var wheat = getServer().getWorlds().getFirst().getBlockAt(4, 301, 3);
+                            check(wheat.getType() == Material.WHEAT
+                                    && ((org.bukkit.block.data.Ageable) wheat.getBlockData()).getAge() == 7,
+                                    "restored mature wheat did not survive subsequent server ticks");
+                            getLogger().info("FRAGILE_BLOCK_STASIS_SMOKE_PASSED: mature wheat retained after placement and subsequent ticks");
+                        } catch (Throwable failure) { error = failure; }
+                    }
                     if (error != null) {
                         getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
                         getServer().shutdown();
@@ -94,6 +107,9 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         expectedItems.put(point(world, 0, 301, 2), rightItem.clone());
         // Non-default directional data and a waterlogged block exercise more than material identity.
         world.getBlockAt(1, 301, 3).setBlockData(getServer().createBlockData("minecraft:oak_stairs[facing=east,half=top,shape=straight,waterlogged=true]"), false);
+        // Imported real farm contains mature wheat: native placement must retain fragile plants too.
+        world.getBlockAt(4, 300, 3).setBlockData(getServer().createBlockData("minecraft:farmland[moisture=7]"), false);
+        world.getBlockAt(4, 301, 3).setBlockData(getServer().createBlockData("minecraft:wheat[age=7]"), false);
         for (int x = 0; x <= 5; x++) for (int y = 300; y <= 302; y++) for (int z = 0; z <= 5; z++) {
             expectedBlocks.put(point(world, x, y, z), world.getBlockAt(x, y, z).getBlockData().getAsString());
         }
@@ -106,6 +122,18 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         registry.markReady(farm.id(), profile);
         // A previous failed run may have left entities in chunks loaded by fixture construction.
         clearTestEntities(world);
+        // A real native capture followed by a deterministic disk failure must leave every block/item intact.
+        var failingStore = new SnapshotStore() {
+            public void save(SavedSnapshot snapshot) throws IOException { throw new IOException("review: injected save failure"); }
+            public List<SavedSnapshot> loadActive() { return List.of(); }
+            public void deactivate(UUID id) { throw new AssertionError("unexpected deactivate"); }
+        };
+        expectRefused(() -> new StasisService(registry, adapter, failingStore).enter(farm.id(), creator));
+        assertRestored(world, expectedBlocks, expectedItems);
+        check(registry.requireCreator(farm.id(), creator).state() == State.READY, "save failure changed state");
+        check(store.loadActive().isEmpty(), "save failure activated snapshot");
+        check(outputItem.equals(((Container) outputBlock.getState(false)).getInventory().getItem(0)), "save failure changed output");
+        getLogger().info("SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED");
         service.enter(farm.id(), creator);
         assertBedrock(world, expectedBlocks);
         check(registry.requireCreator(farm.id(), creator).state() == State.STASIS, "state after enter");
@@ -274,6 +302,11 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         var cow = (org.bukkit.entity.Cow) world.spawnEntity(new Location(world, 6.2, 301, 2.5), EntityType.COW);
         cow.setAge(-1200);
         originals.add(cow);
+        var chicken = (org.bukkit.entity.Chicken) world.spawnEntity(new Location(world, 4.5, 301, 2.5), EntityType.CHICKEN);
+        chicken.setAge(-600);
+        chicken.setAgeLock(true);
+        chicken.setEggLayTime(4321);
+        originals.add(chicken);
         var cart = (org.bukkit.entity.Minecart) world.spawnEntity(new Location(world, 6.3, 301, 3.5), EntityType.MINECART);
         originals.add(cart);
         var zombie = (org.bukkit.entity.Zombie) world.spawnEntity(new Location(world, 6.3, 301, 3.5), EntityType.ZOMBIE);
@@ -325,6 +358,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         recovered.restore(farmId, creator);
         assertRestoredEntities(locations, types, cart.getUniqueId(), zombie.getUniqueId());
         check(((org.bukkit.entity.Cow) getServer().getEntity(cow.getUniqueId())).getAge() == -1200, "cow age lost");
+        assertChicken(chicken.getUniqueId());
         check(((org.bukkit.entity.Zombie) getServer().getEntity(zombie.getUniqueId())).isBaby(), "zombie baby state lost");
         check(((org.bukkit.entity.Villager) getServer().getEntity(villager.getUniqueId())).getVillagerLevel() == 3, "villager level lost");
         check(((org.bukkit.entity.Villager) getServer().getEntity(villager.getUniqueId())).getProfession() == org.bukkit.entity.Villager.Profession.FARMER, "profession lost");
@@ -355,7 +389,15 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         assertBedrock(world, blocks);
         retry.restore(farmId, creator);
         assertRestoredEntities(locations, types, cart.getUniqueId(), zombie.getUniqueId());
+        assertChicken(chicken.getUniqueId());
+        getLogger().info("CHICKEN_STASIS_SMOKE_PASSED: UUID/name/PDC/location/age/age-lock/egg timer; disk recovery and failed-restore retry");
         getLogger().info("ENTITY_STASIS_SMOKE_PASSED");
+    }
+
+    private void assertChicken(UUID id) {
+        var chicken = (org.bukkit.entity.Chicken) getServer().getEntity(id);
+        check(chicken.getAge() == -600 && chicken.getAgeLock(), "chicken age/lock lost");
+        check(chicken.getEggLayTime() == 4321, "chicken egg timer lost");
     }
 
     private void assertRestoredEntities(Map<UUID, Location> locations, Map<UUID, EntityType> types,

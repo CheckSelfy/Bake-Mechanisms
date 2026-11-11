@@ -34,3 +34,7 @@ Branch: feature/22-entity-nbt-audit
 - Проверено: `gradlew.bat build entityNbtSmoke stasisSmoke --console=plain` — `BUILD SUCCESSFUL`;
   Paper 26.3 build 246: `ENTITY_NBT_CAPTURE_PASSED`, `ENTITY_NBT_RESTART_PASSED` и все пять
   обычных smoke-маркеров стазиса. Ручной клиент для этого аудита не требуется.
+- PR #30: при объединении с #29 сохранены тесты кур, ошибки записи снимка и растений.
+  Выявлена несовместимость BlockTransformer с большими снимками (LimitedRegion начального чанка);
+  восстановление опорной геометрии/растений выполняется без transformer, tile NBT остаётся native.
+  В регрессионный сценарий 80×80 добавлена зрелая пшеница в дальнем углу.
