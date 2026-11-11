@@ -1,6 +1,7 @@
 package io.github.checkselfy.bakemechanisms.profiling;
 
 import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
+import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
@@ -74,7 +75,7 @@ public final class ProfilingProtection implements Listener {
     /** A hopper or chest placed against the output could drain it or turn it into another container. */
     private boolean touchesOutput(Block block) {
         var p = PaperOutputResolver.position(block);
-        return service.activeFarms().stream().flatMap(farm -> farm.output().blocks().stream())
+        return service.activeFarms().stream().flatMap(FarmRegistry.MarkedFarm::outputBlocks)
                 .anyMatch(o -> o.worldId().equals(p.worldId()) && Math.abs((long) o.x() - p.x())
                         + Math.abs((long) o.y() - p.y()) + Math.abs((long) o.z() - p.z()) == 1);
     }
@@ -157,7 +158,7 @@ public final class ProfilingProtection implements Listener {
 
     private boolean isProtectedOutput(Block block) {
         var position = PaperOutputResolver.position(block);
-        return service.activeFarms().stream().anyMatch(farm -> farm.output().blocks().contains(position));
+        return service.activeFarms().stream().anyMatch(farm -> farm.outputBlocks().anyMatch(position::equals));
     }
 
     private static Player responsiblePlayer(Entity entity) {
@@ -189,7 +190,7 @@ public final class ProfilingProtection implements Listener {
 
     private boolean isProtected(BlockPosition position) {
         return service.activeFarms().stream().anyMatch(farm -> farm.mechanism().contains(position)
-                || farm.output().blocks().contains(position));
+                || farm.outputBlocks().anyMatch(position::equals));
     }
 
     private static void deny(Cancellable event, Player player) {

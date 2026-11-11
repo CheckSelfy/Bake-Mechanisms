@@ -1,5 +1,6 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.Set;
 
@@ -23,5 +24,12 @@ public record OutputContainer(Type type, Set<BlockPosition> blocks) {
                 throw new IllegalArgumentException("Половины двойного сундука должны быть соседними.");
             }
         }
+    }
+
+    /** Type and coordinates of the container for messages; a double chest is named by its lowest half. */
+    public String describe() {
+        var block = blocks.stream().min(Comparator.comparingInt(BlockPosition::x).thenComparingInt(BlockPosition::y)
+                .thenComparingInt(BlockPosition::z)).orElseThrow();
+        return type + " " + block.x() + ", " + block.y() + ", " + block.z();
     }
 }

@@ -64,7 +64,7 @@ class FarmRemovalTest {
         assertTrue(registry.all().isEmpty());
         assertFalse(Files.exists(root.resolve(farm.id().toString())));
         assertTrue(storage.loadAll().isEmpty());
-        assertDoesNotThrow(() -> registry.register(creator, farm.mechanism(), farm.output()), "placement is free");
+        assertDoesNotThrow(() -> registry.register(creator, farm.mechanism(), farm.outputs().get(0)), "placement is free");
     }
 
     @Test
@@ -149,7 +149,7 @@ class FarmRemovalTest {
     void removalReleasesTheOutputChunkOfALeftoverBuffer() {
         setUp();
         var farm = registry.register(creator, mechanism(0), output(40));
-        emulation.drain(farm, Map.of(Material.KELP, 3));
+        emulation.drain(farm, List.of(Map.of(Material.KELP, 3)));
         assertFalse(loaded.isEmpty());
 
         removal.request(farm.id(), creator);
@@ -166,7 +166,7 @@ class FarmRemovalTest {
         removal = new FarmRemoval(registry, id -> { throw new java.io.UncheckedIOException(
                 new java.io.IOException("locked")); }, emulation::stopDraining, now::get);
         var farm = registry.register(creator, mechanism(0), output(40));
-        emulation.drain(farm, Map.of(Material.KELP, 3));
+        emulation.drain(farm, List.of(Map.of(Material.KELP, 3)));
 
         removal.request(farm.id(), creator);
         assertThrows(IllegalArgumentException.class, () -> removal.confirm(farm.id(), creator));

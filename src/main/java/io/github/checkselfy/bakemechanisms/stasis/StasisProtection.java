@@ -1,5 +1,6 @@
 package io.github.checkselfy.bakemechanisms.stasis;
 
+import io.github.checkselfy.bakemechanisms.marking.OutputContainer;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
 import java.util.List;
 import org.bukkit.Material;
@@ -36,7 +37,7 @@ public final class StasisProtection implements Listener {
     private boolean protectedBlock(Block block) {
         var position = PaperOutputResolver.position(block);
         return service.activeFarms().stream().anyMatch(farm -> farm.mechanism().contains(position)
-                || farm.output().blocks().contains(position));
+                || farm.outputBlocks().anyMatch(position::equals));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -52,9 +53,9 @@ public final class StasisProtection implements Listener {
     private boolean mergesWithOutput(Block block) {
         if (block.getType() != Material.CHEST) return false;
         var p = PaperOutputResolver.position(block);
-        return service.activeFarms().stream()
-                .filter(farm -> farm.output().type() != io.github.checkselfy.bakemechanisms.marking.OutputContainer.Type.BARREL)
-                .flatMap(farm -> farm.output().blocks().stream())
+        return service.activeFarms().stream().flatMap(farm -> farm.outputs().stream())
+                .filter(output -> output.type() != OutputContainer.Type.BARREL)
+                .flatMap(output -> output.blocks().stream())
                 .anyMatch(o -> o.worldId().equals(p.worldId()) && o.y() == p.y()
                         && Math.abs((long) o.x() - p.x()) + Math.abs((long) o.z() - p.z()) == 1);
     }

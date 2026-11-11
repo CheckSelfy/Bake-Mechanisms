@@ -53,6 +53,8 @@ public final class CorrectnessPlugin extends JavaPlugin {
     private boolean shortProfileOnly;
     private final Map<UUID, Map<Material, Integer>> before = new java.util.HashMap<>();
     private EmulationState plateau;
+    private final Map<UUID, Map<Material, Integer>> firstProduction = new java.util.HashMap<>();
+    private final Map<UUID, Long> firstProductionTick = new java.util.HashMap<>();
 
     @Override public void onEnable() {
         root = getServer().getPluginManager().getPlugin("BakeMechanisms").getDataFolder().toPath().resolve("farms");
@@ -99,9 +101,9 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 saturatedFarm = auxiliary(96);
                 var saturated = output(blocks, 96);
                 for (int slot = 0; slot < saturated.getSize(); slot++) saturated.setItem(slot, new ItemStack(Material.STONE, 64));
-                saturated.setItem(0, new ItemStack(Material.STONE, 62));
-                command(a, "profile " + emptyFarm);
-                command(a, "profile " + saturatedFarm);
+                saturated.setItem(0, new ItemStack(Material.STONE, 61));
+                command(a, "profile --id " + emptyFarm);
+                command(a, "profile --id " + saturatedFarm);
                 a.teleport(new Location(blocks, -2.5, 65, 7.5));
                 next(1);
             }
@@ -110,14 +112,14 @@ public final class CorrectnessPlugin extends JavaPlugin {
         elapsed++;
         switch (step) {
             case 1 -> {
-                if (elapsed == 100 || elapsed == 200) output(blocks, 96).addItem(new ItemStack(Material.STONE));
+                if (elapsed == 100 || elapsed == 200 || elapsed == 320) output(blocks, 96).addItem(new ItemStack(Material.STONE));
                 if (elapsed == 3600) {
                     state(emptyFarm, State.NEEDS_PROFILING);
                     if (shortProfileOnly) {
                         state(saturatedFarm, State.NEEDS_PROFILING);
                         check(farm(saturatedFarm).farm().profile() == null, "short profile retained with rejection enabled");
                         for (var id : List.of(emptyFarm, saturatedFarm)) {
-                            command(a, "delete " + id); command(a, "delete " + id + " confirm");
+                            command(a, "delete --id " + id); command(a, "delete --id " + id + " confirm");
                         }
                         check(storage.loadAll().isEmpty() && tickets(blocks) == 0, "short-profile run leaked files/tickets");
                         pass("SHORT_PROFILE_PASSED", "3600 actual ticks: 200-tick saturated segment rejected with 600-tick minimum enabled; zero output also rejected");
@@ -129,7 +131,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                     check(profile.usefulTicks() == 200 && profile.ratesPer20Ticks().equals(Map.of(Material.STONE, 0.1)),
                             "saturation must omit the full sample and flat tail: " + profile);
                     for (var id : List.of(emptyFarm, saturatedFarm)) {
-                        command(a, "delete " + id); command(a, "delete " + id + " confirm");
+                        command(a, "delete --id " + id); command(a, "delete --id " + id + " confirm");
                     }
                     check(tickets(blocks) == 0, "auxiliary profiling leaked tickets");
                     pass("C04_EMPTY_SATURATED", "3600 actual ticks: zero output rejected; saturated profile uses 200 ticks and rate=0.1; short-segment rejection disabled");
@@ -150,17 +152,17 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 rights(blockFarm);
                 creatorExperience = a.getTotalExperience();
                 otherExperience = b.getTotalExperience();
-                command(a, "profile " + blockFarm);
+                command(a, "profile --id " + blockFarm);
                 state(blockFarm, State.PROFILING);
-                command(a, "cancel " + blockFarm);
+                command(a, "cancel --id " + blockFarm);
                 state(blockFarm, State.NEEDS_PROFILING);
                 check(tickets(blocks) == 0, "cancel leaked tickets");
                 pass("C04_CANCEL", "production /bake profile + cancel; original retained and tickets released");
                 output(blocks).clear(); output(entities).clear();
                 output(blocks).addItem(new ItemStack(Material.CACTUS, 10));
                 output(entities).addItem(new ItemStack(Material.EGG, 10));
-                command(a, "profile " + blockFarm);
-                command(a, "profile " + entityFarm);
+                command(a, "profile --id " + blockFarm);
+                command(a, "profile --id " + entityFarm);
                 state(blockFarm, State.PROFILING); state(entityFarm, State.PROFILING);
                 var breakEvent = new BlockBreakEvent(blocks.getBlockAt(0, 63, 0), b);
                 getServer().getPluginManager().callEvent(breakEvent);
@@ -168,6 +170,11 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 next(3);
             }
             case 3 -> {
+                // Read at the same snapshot boundaries, before adding controlled items.
+                if (elapsed % 20 == 0) {
+                    observeFirstProduction(blockFarm, blocks, Material.CACTUS);
+                    observeFirstProduction(entityFarm, entities, Material.EGG);
+                }
                 if (elapsed == 100) {
                     var sword = new ItemStack(Material.DIAMOND_SWORD);
                     var meta = (Damageable) sword.getItemMeta();
@@ -186,7 +193,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 pass("C03", "3600 ticks, baseline excluded; profiles=" + farm(blockFarm).farm().profile()
                         + " / " + farm(entityFarm).farm().profile());
                 b.teleport(new Location(blocks, 2.5, 65, 2.5));
-                command(a, "stasis " + blockFarm);
+                command(a, "stasis --id " + blockFarm);
                 state(blockFarm, State.READY);
                 check(b.getLocation().distanceSquared(new Location(blocks, 2.5, 65, 2.5)) < 0.01,
                         "refused stasis moved the player");
@@ -194,7 +201,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 pass("C05_OCCUPIED", "player inside: command refused, READY retained, player not teleported");
                 for (var id : List.of(blockFarm, entityFarm)) {
                     before.put(id, counts(world(id)));
-                    command(a, "stasis " + id); state(id, State.STASIS);
+                    command(a, "stasis --id " + id); state(id, State.STASIS);
                     filler(world(id));
                     check(tickets(world(id)) == 1, "stasis must hold only output chunk");
                     var event = new BlockBreakEvent(world(id).getBlockAt(0, 63, 0), b);
@@ -211,8 +218,8 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 }
                 check(chickens() == 0, "original chickens remain in stasis");
                 pass("C05", "both cuboids entirely bedrock; original chickens absent; only output tickets retained");
-                command(a, "delete " + blockFarm);
-                command(a, "delete " + blockFarm + " confirm");
+                command(a, "delete --id " + blockFarm);
+                command(a, "delete --id " + blockFarm + " confirm");
                 state(blockFarm, State.STASIS);
                 check(Files.exists(root.resolve(blockFarm.toString()).resolve("stasis.yml")), "delete lost active snapshot");
                 next(4);
@@ -227,7 +234,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 check(a.getTotalExperience() == creatorExperience && b.getTotalExperience() == otherExperience,
                         "emulation awarded player experience");
                 pass("C06_C07", "exact 4000-tick inventory + buffer + fraction accounting for every type; plain swords; no XP orbs");
-                command(a, "restore " + entityFarm);
+                command(a, "restore --id " + entityFarm);
                 restored(entityFarm);
                 check(chickens() == 8, "restored chicken count differs");
                 pass("C09_ENTITIES", "8 chickens and snapshot-marker inventory restored; profile invalidated");
@@ -237,13 +244,13 @@ public final class CorrectnessPlugin extends JavaPlugin {
             case 5 -> {
                 if (elapsed == 200) {
                     plateau = farm(blockFarm).emulation().orElseThrow();
-                    check(!plateau.buffer().isEmpty(), "full output did not accumulate bounded pending production");
+                    check(!plateau.outputs().getFirst().buffer().isEmpty(), "full output did not accumulate bounded pending production");
                 }
                 if (elapsed < 3800) return;
                 check(plateau.equals(farm(blockFarm).emulation().orElseThrow()), "production continued with blocked buffer");
                 check(blocks.getEntitiesByClass(org.bukkit.entity.Item.class).isEmpty(), "full output dropped items into world");
                 pass("C08_PAUSE", "full output: identical buffer/fractions for 3600 ticks; no overflow drops");
-                command(a, "profile " + entityFarm); state(entityFarm, State.PROFILING);
+                command(a, "profile --id " + entityFarm); state(entityFarm, State.PROFILING);
                 next(6);
             }
             case 6 -> {
@@ -261,10 +268,10 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 if (elapsed < 200) return;
                 verifyProduction(blockFarm, 200, Map.of(), plateau);
                 pass("C08_RESUME", "freed output: pending buffer delivered and exact production resumed");
-                command(a, "restore " + blockFarm); restored(blockFarm);
+                command(a, "restore --id " + blockFarm); restored(blockFarm);
                 pass("C09_BLOCKS", "cactus, hoppers, internal marker restored after process restart");
-                command(a, "stasis " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
-                command(a, "profile " + blockFarm); command(a, "profile " + entityFarm);
+                command(a, "stasis --id " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
+                command(a, "profile --id " + blockFarm); command(a, "profile --id " + entityFarm);
                 next(8);
             }
             case 8 -> {
@@ -279,17 +286,17 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 var edit = new BlockBreakEvent(blocks.getBlockAt(0, 63, 0), a);
                 getServer().getPluginManager().callEvent(edit);
                 state(blockFarm, State.NEEDS_PROFILING);
-                command(a, "stasis " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
-                command(a, "stasis " + entityFarm); state(entityFarm, State.STASIS);
-                command(a, "restore " + entityFarm); restored(entityFarm);
+                command(a, "stasis --id " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
+                command(a, "stasis --id " + entityFarm); state(entityFarm, State.STASIS);
+                command(a, "restore --id " + entityFarm); restored(entityFarm);
                 for (var id : List.of(blockFarm, entityFarm)) {
-                    command(b, "delete " + id); command(b, "delete " + id + " confirm");
+                    command(b, "delete --id " + id); command(b, "delete --id " + id + " confirm");
                     check(Files.exists(root.resolve(id.toString())), "noncreator deleted farm");
-                    command(a, "delete " + id + " confirm");
+                    command(a, "delete --id " + id + " confirm");
                     check(Files.exists(root.resolve(id.toString())), "confirmation without request deleted farm");
-                    command(a, "delete " + id);
+                    command(a, "delete --id " + id);
                     check(Files.exists(root.resolve(id.toString())), "unconfirmed request deleted farm");
-                    command(a, "delete " + id + " confirm");
+                    command(a, "delete --id " + id + " confirm");
                     check(!Files.exists(root.resolve(id.toString())), "confirmed delete retained farm files");
                 }
                 check(storage.loadAll().isEmpty(), "registrations remain after delete");
@@ -346,10 +353,10 @@ public final class CorrectnessPlugin extends JavaPlugin {
     }
 
     private void rights(UUID id) {
-        for (String op : List.of("profile", "cancel", "stasis", "restore", "delete")) command(b, op + " " + id);
+        for (String op : List.of("profile", "cancel", "stasis", "restore", "delete")) command(b, op + " --id " + id);
         state(id, State.NEEDS_PROFILING);
         var command = getServer().getPluginCommand("bake");
-        var completions = command.tabComplete(b, "bake", new String[]{"profile", ""});
+        var completions = command.tabComplete(b, "bake", new String[]{"profile", "--id", ""});
         check(!completions.contains(id.toString()), "noncreator sees farm completion");
         pass("C01_RIGHTS", "noncreator lifecycle commands denied and UUID absent from completion");
     }
@@ -362,14 +369,25 @@ public final class CorrectnessPlugin extends JavaPlugin {
         a.setSneaking(false);
     }
 
+    private void observeFirstProduction(UUID id, World world, Material baselineType) {
+        if (firstProduction.containsKey(id)) return;
+        var current = counts(world);
+        if (current.entrySet().stream().anyMatch(entry -> entry.getValue()
+                > (entry.getKey() == baselineType ? 10 : 0))) {
+            firstProduction.put(id, Map.copyOf(current));
+            firstProductionTick.put(id, elapsed);
+        }
+    }
+
     private void verifyProfile(UUID id, World world, Material baselineType) {
         var profile = farm(id).farm().profile();
-        check(profile.usefulTicks() == 3600, "profile useful duration");
+        check(firstProduction.containsKey(id), "no first production snapshot");
+        check(profile.usefulTicks() == 3600 - firstProductionTick.get(id), "profile useful duration");
         var totals = counts(world);
-        totals.merge(baselineType, -10, Integer::sum);
+        firstProduction.get(id).forEach((type, count) -> totals.merge(type, -count, Integer::sum));
         for (var entry : totals.entrySet()) {
             if (entry.getValue() == 0) continue;
-            double expected = entry.getValue() * 20.0 / 3600;
+            double expected = entry.getValue() * 20.0 / profile.usefulTicks();
             check(Math.abs(profile.ratesPer20Ticks().getOrDefault(entry.getKey(), 0.0) - expected) < 1e-12,
                     "profile baseline/rate mismatch " + entry);
         }
@@ -381,14 +399,14 @@ public final class CorrectnessPlugin extends JavaPlugin {
         var progress = stored.emulation().orElseThrow();
         for (var rate : stored.farm().profile().ratesPer20Ticks().entrySet()) {
             var type = rate.getKey();
-            var total = state.fractions().getOrDefault(type, BigDecimal.ZERO)
+            var total = state.outputs().getFirst().fractions().getOrDefault(type, BigDecimal.ZERO)
                     .add(BigDecimal.valueOf(rate.getValue()).multiply(BigDecimal.valueOf(ticks)).divide(BigDecimal.valueOf(20)));
-            int expected = total.setScale(0, RoundingMode.FLOOR).intValueExact() + state.buffer().getOrDefault(type, 0);
-            int observed = actual.getOrDefault(type, 0) - initial.getOrDefault(type, 0) + progress.buffer().getOrDefault(type, 0);
+            int expected = total.setScale(0, RoundingMode.FLOOR).intValueExact() + state.outputs().getFirst().buffer().getOrDefault(type, 0);
+            int observed = actual.getOrDefault(type, 0) - initial.getOrDefault(type, 0) + progress.outputs().getFirst().buffer().getOrDefault(type, 0);
             check(expected == observed, "production mismatch " + type + " expected=" + expected + " actual=" + observed);
-            check(total.remainder(BigDecimal.ONE).compareTo(progress.fractions().get(type)) == 0, "fraction mismatch " + type);
+            check(total.remainder(BigDecimal.ONE).compareTo(progress.outputs().getFirst().fractions().get(type)) == 0, "fraction mismatch " + type);
             pass("ACCOUNTING", "farm=" + id + " type=" + type + " ticks=" + ticks + " produced=" + observed
-                    + " fraction=" + progress.fractions().get(type));
+                    + " fraction=" + progress.outputs().getFirst().fractions().get(type));
         }
     }
 

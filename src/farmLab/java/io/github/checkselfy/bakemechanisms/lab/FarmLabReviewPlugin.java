@@ -77,7 +77,7 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                 pass("NATURAL_OUTPUT", farm.id() + " ticks=" + ticks + " output=" + counts(farm));
                 output(farm).clear();
                 register(farm);
-                command("profile " + ids.get(farm.id()));
+                command("profile --id " + ids.get(farm.id()));
             }
             next(2);
         } else if (phase == 2) {
@@ -107,7 +107,7 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                 });
                 blockStates.put(farm.id(), blocks);
                 inventories.put(farm.id(), items);
-                command("stasis " + ids.get(farm.id()));
+                command("stasis --id " + ids.get(farm.id()));
                 check(stored(farm).farm().state().name().equals("STASIS"), "stasis refused " + farm.id());
                 eachBlock(farm, b -> check(b.getType() == Material.BEDROCK, "incomplete filler"));
             }
@@ -122,13 +122,13 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                     var total = BigDecimal.valueOf(rate.getValue()).multiply(BigDecimal.valueOf(100));
                     int expected = total.setScale(0, RoundingMode.FLOOR).intValueExact();
                     int actual = current.getOrDefault(rate.getKey(), 0) - baseline.get(farm.id()).getOrDefault(rate.getKey(), 0)
-                            + progress.buffer().getOrDefault(rate.getKey(), 0);
+                            + progress.outputs().getFirst().buffer().getOrDefault(rate.getKey(), 0);
                     check(expected == actual, "production mismatch " + farm.id());
-                    check(total.remainder(BigDecimal.ONE).compareTo(progress.fractions().get(rate.getKey())) == 0, "fraction mismatch");
+                    check(total.remainder(BigDecimal.ONE).compareTo(progress.outputs().getFirst().fractions().get(rate.getKey())) == 0, "fraction mismatch");
                     pass("ACCOUNTING", farm.id() + " ticks=2000 type=" + rate.getKey() + " produced=" + actual
-                            + " fraction=" + progress.fractions().get(rate.getKey()));
+                            + " fraction=" + progress.outputs().getFirst().fractions().get(rate.getKey()));
                 }
-                command("restore " + ids.get(farm.id()));
+                command("restore --id " + ids.get(farm.id()));
                 check(stored(farm).farm().state().name().equals("NEEDS_PROFILING"), "restore failed " + farm.id());
                 eachBlock(farm, block -> {
                     check(block.getBlockData().getAsString().equals(blockStates.get(farm.id()).get(key(block))),

@@ -18,7 +18,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.bukkit.Material;
 import org.bukkit.configuration.InvalidConfigurationException;
@@ -27,6 +30,8 @@ import org.bukkit.configuration.file.YamlConfiguration;
 /** Snapshot-owned recovery manifest; does not persist the emulation state maintained by #8. */
 public final class FileSnapshotStore implements SnapshotStore {
     private static final int MAX_BYTES = 128 * 1024 * 1024;
+    /** Format 2 lists every output container with its rates; format 1 manifests had a single output. */
+    private static final int FORMAT = 2;
     private final Path farmsDirectory;
     private final String minecraftVersion;
 
@@ -44,17 +49,26 @@ public final class FileSnapshotStore implements SnapshotStore {
         Files.createDirectories(directory);
         if (Files.exists(directory.resolve("stasis.yml"))) throw new IOException("Активный снимок уже существует.");
         var yaml = new YamlConfiguration();
-        yaml.set("format-version", 1);
+        yaml.set("format-version", FORMAT);
         yaml.set("minecraft-version", minecraftVersion);
         yaml.set("id", farm.id().toString());
         yaml.set("creator", farm.creatorId().toString());
         yaml.set("world", farm.mechanism().min().worldId().toString());
         yaml.set("min", coordinates(farm.mechanism().min()));
         yaml.set("max", coordinates(farm.mechanism().max()));
-        yaml.set("output.type", farm.output().type().name());
-        yaml.set("output.blocks", farm.output().blocks().stream().map(FileSnapshotStore::coordinates).sorted().toList());
+        var outputs = new ArrayList<Map<String, Object>>();
+        for (int i = 0; i < farm.outputs().size(); i++) {
+            var output = new LinkedHashMap<String, Object>();
+            output.put("type", farm.outputs().get(i).type().name());
+            output.put("blocks", farm.outputs().get(i).blocks().stream().map(FileSnapshotStore::coordinates).sorted()
+                    .toList());
+            var rates = new TreeMap<String, Double>();
+            farm.profile().outputs().get(i).forEach((material, rate) -> rates.put(material.name(), rate));
+            output.put("rates", rates);
+            outputs.add(output);
+        }
+        yaml.set("outputs", outputs);
         yaml.set("profile.useful-ticks", farm.profile().usefulTicks());
-        farm.profile().ratesPer20Ticks().forEach((material, rate) -> yaml.set("profile.rates." + material.name(), rate));
         yaml.set("sha256", digest(data));
         yaml.set("binary-file", "snapshot.bin");
         atomicWrite(directory.resolve("snapshot.bin"), data);
@@ -78,7 +92,8 @@ public final class FileSnapshotStore implements SnapshotStore {
         try {
             var yaml = new YamlConfiguration();
             yaml.load(manifest.toFile());
-            if (yaml.getInt("format-version") != 1 || !minecraftVersion.equals("26.3")
+            int format = yaml.getInt("format-version");
+            if ((format != 1 && format != FORMAT) || !minecraftVersion.equals("26.3")
                     || !minecraftVersion.equals(yaml.getString("minecraft-version"))) {
                 throw new IOException("Несовместимая версия снимка: " + manifest);
             }
@@ -86,20 +101,29 @@ public final class FileSnapshotStore implements SnapshotStore {
             if (!directory.getFileName().toString().equals(id.toString())) throw new IOException("Неверный UUID снимка.");
             var world = UUID.fromString(yaml.getString("world"));
             var mechanism = new Cuboid(position(world, yaml.getString("min")), position(world, yaml.getString("max")));
-            var blocks = new HashSet<BlockPosition>();
-            for (var value : yaml.getStringList("output.blocks")) blocks.add(position(world, value));
-            var output = new OutputContainer(OutputContainer.Type.valueOf(yaml.getString("output.type")), blocks);
-            if (output.blocks().stream().anyMatch(mechanism::contains)) throw new IOException("Выход внутри снимка.");
-            var rates = new HashMap<Material, Double>();
-            var section = yaml.getConfigurationSection("profile.rates");
-            if (section == null) throw new IOException("Профиль снимка отсутствует.");
-            for (var name : section.getKeys(false)) {
-                double rate = section.getDouble(name);
-                if (!Double.isFinite(rate) || rate <= 0) throw new IOException("Некорректная скорость профиля.");
-                rates.put(Material.valueOf(name), rate);
+            var outputs = new ArrayList<OutputContainer>();
+            var rates = new ArrayList<Map<Material, Double>>();
+            if (format == 1) {
+                // A single output, with the profile's rates in a separate section.
+                outputs.add(output(world, yaml.getString("output.type"), yaml.getStringList("output.blocks")));
+                var section = yaml.getConfigurationSection("profile.rates");
+                if (section == null) throw new IOException("Профиль снимка отсутствует.");
+                rates.add(rates(section.getValues(false)));
+            } else {
+                for (var entry : yaml.getMapList("outputs")) {
+                    if (!(entry.get("blocks") instanceof List<?> blocks) || !(entry.get("rates") instanceof Map<?, ?> map)) {
+                        throw new IOException("Неверное описание выходного контейнера снимка.");
+                    }
+                    outputs.add(output(world, String.valueOf(entry.get("type")),
+                            blocks.stream().map(String::valueOf).toList()));
+                    rates.add(rates(map));
+                }
             }
-            var farm = new MarkedFarm(id, UUID.fromString(yaml.getString("creator")), mechanism, output, State.STASIS,
-                    new ProductionProfile(rates, yaml.getLong("profile.useful-ticks")));
+            for (var output : outputs) {
+                if (output.blocks().stream().anyMatch(mechanism::contains)) throw new IOException("Выход внутри снимка.");
+            }
+            var farm = new MarkedFarm(id, UUID.fromString(yaml.getString("creator")), null, mechanism, outputs,
+                    State.STASIS, new ProductionProfile(rates, yaml.getLong("profile.useful-ticks")));
             String binaryName = yaml.getString("binary-file", "blocks.nbt");
             if (!List.of("snapshot.bin", "blocks.nbt").contains(binaryName)) throw new IOException("Неверное имя снимка.");
             var binary = directory.resolve(binaryName);
@@ -114,6 +138,23 @@ public final class FileSnapshotStore implements SnapshotStore {
 
     @Override public void deactivate(UUID farmId) throws IOException {
         Files.delete(farmsDirectory.resolve(farmId.toString()).resolve("stasis.yml"));
+    }
+
+    private static OutputContainer output(UUID world, String type, List<String> coordinates) {
+        var blocks = new HashSet<BlockPosition>();
+        for (var value : coordinates) blocks.add(position(world, value));
+        return new OutputContainer(OutputContainer.Type.valueOf(type), blocks);
+    }
+
+    private static Map<Material, Double> rates(Map<?, ?> values) throws IOException {
+        var rates = new HashMap<Material, Double>();
+        for (var entry : values.entrySet()) {
+            if (!(entry.getValue() instanceof Number number)) throw new IOException("Некорректная скорость профиля.");
+            double rate = number.doubleValue();
+            if (!Double.isFinite(rate) || rate <= 0) throw new IOException("Некорректная скорость профиля.");
+            rates.put(Material.valueOf(String.valueOf(entry.getKey())), rate);
+        }
+        return rates;
     }
 
     private static String coordinates(BlockPosition block) {

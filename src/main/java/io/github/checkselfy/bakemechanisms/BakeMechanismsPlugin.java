@@ -14,9 +14,11 @@ import io.github.checkselfy.bakemechanisms.marking.ReadyMechanismWatcher;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
 import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingProgressDisplay;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import io.github.checkselfy.bakemechanisms.stasis.FileSnapshotStore;
+import io.github.checkselfy.bakemechanisms.stasis.OfflinePlayerSafety;
 import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
 import io.github.checkselfy.bakemechanisms.stasis.StasisCommands;
 import io.github.checkselfy.bakemechanisms.stasis.StasisProduction;
@@ -26,6 +28,7 @@ import io.github.checkselfy.bakemechanisms.storage.FarmStorage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -36,6 +39,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class BakeMechanismsPlugin extends JavaPlugin {
     private ProfilingService profiling;
     private StasisEmulationService emulation;
+    private OfflinePlayerSafety playerSafety;
 
     @Override
     public void onEnable() {
@@ -43,6 +47,12 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         long maxVolume = getConfig().getLong("max-mechanism-volume", FarmRegistry.DEFAULT_MAX_VOLUME);
         if (maxVolume < 1) {
             getLogger().severe("max-mechanism-volume must be positive; plugin disabled.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        int maxOutputs = getConfig().getInt("max-output-containers", FarmRegistry.DEFAULT_MAX_OUTPUTS);
+        if (maxOutputs < 1) {
+            getLogger().severe("max-output-containers must be positive; plugin disabled.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -63,7 +73,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             return;
         }
         var storage = new FarmStorage(getDataFolder().toPath().resolve("farms"));
-        var registry = new FarmRegistry(maxVolume, farm -> {
+        var registry = new FarmRegistry(maxVolume, maxOutputs, farm -> {
             try {
                 storage.save(farm);
             } catch (UncheckedIOException error) {
@@ -93,12 +103,16 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         var paperWorld = new PaperProfilingWorld(this, resolver);
         var tickets = new ChunkTickets(paperWorld);
         // Collected before recovery, which consumes the saved progress of farms in stasis.
-        var drains = stored.values().stream().filter(farmData -> !farmData.drain().isEmpty()).toList();
+        var drains = stored.values().stream().filter(FarmStorage.StoredFarm::draining).toList();
         emulation = new StasisEmulationService(new PaperEmulationWorld(paperWorld), tickets, emulationSettings,
                 loggingStore(storage));
-        profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining);
+        var progressDisplay = new ProfilingProgressDisplay(getServer());
+        profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining, progressDisplay);
         // Snapshots share the farm directories with FarmStorage; the stasis manifest is authoritative for STASIS.
-        var stasis = new StasisService(registry, new PaperStasisWorld(this, resolver),
+        playerSafety = new OfflinePlayerSafety(getServer(), getDataFolder().toPath().resolve("offline-players.dat"));
+        var stasisWorld = new PaperStasisWorld(this, resolver, playerSafety);
+        getServer().getPluginManager().registerEvents(playerSafety, this);
+        var stasis = new StasisService(registry, stasisWorld,
                 new FileSnapshotStore(getDataFolder().toPath().resolve("farms"), getServer().getMinecraftVersion()),
                 production(emulation, stored));
         try {
@@ -124,6 +138,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         command.setExecutor(commands);
         command.setTabCompleter(commands);
         getServer().getPluginManager().registerEvents(marking, this);
+        getServer().getPluginManager().registerEvents(progressDisplay, this);
         getServer().getPluginManager().registerEvents(new ProfilingProtection(profiling), this);
         getServer().getPluginManager().registerEvents(new ReadyMechanismWatcher(registry, getServer()), this);
         getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
@@ -136,6 +151,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (playerSafety != null) playerSafety.shutdown();
         // Unfinished profiling never survives a restart: drop protection and chunk tickets.
         if (profiling != null) profiling.cancelAll();
         // Production of farms in stasis is saved and continues after the restart.
@@ -149,13 +165,12 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
      */
     private static StasisProduction production(StasisEmulationService emulation,
                                                Map<UUID, FarmStorage.StoredFarm> stored) {
-        var empty = new EmulationState(Map.of(), Map.of());
         return new StasisProduction() {
             @Override public void start(MarkedFarm farm) {
                 var saved = stored.remove(farm.id());
                 var state = saved != null && saved.emulation().isPresent()
                         && Objects.equals(saved.farm().profile(), farm.profile())
-                        ? saved.emulation().get() : empty;
+                        ? saved.emulation().get() : EmulationState.EMPTY;
                 emulation.start(farm, state);
             }
 
@@ -174,8 +189,8 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
                 attempt(farmId, () -> storage.saveEmulation(farmId, state));
             }
 
-            @Override public void saveDrain(UUID farmId, Map<Material, Integer> buffer) {
-                attempt(farmId, () -> storage.saveDrain(farmId, buffer));
+            @Override public void saveDrain(UUID farmId, List<Map<Material, Integer>> buffers) {
+                attempt(farmId, () -> storage.saveDrain(farmId, buffers));
             }
 
             @Override public void deleteDrain(UUID farmId) {

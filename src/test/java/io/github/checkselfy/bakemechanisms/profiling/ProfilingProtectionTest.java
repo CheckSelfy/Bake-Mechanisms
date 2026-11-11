@@ -60,7 +60,7 @@ class ProfilingProtectionTest {
         // Mechanism occupies x/y/z 0..9, output barrel at (20, 0, 0).
         farm = registry.register(creator, new Cuboid(position(0, 0, 0), position(9, 9, 9)),
                 new OutputContainer(OutputContainer.Type.BARREL, Set.of(position(20, 0, 0))));
-        fake.contents.put(farm.output(), new OutputSnapshot(Map.of(), false));
+        fake.contents.put(farm.outputs().get(0), new OutputSnapshot(Map.of(), false));
         service.start(farm.id(), creator);
     }
 
