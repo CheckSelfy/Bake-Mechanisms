@@ -119,7 +119,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                         state(saturatedFarm, State.NEEDS_PROFILING);
                         check(farm(saturatedFarm).farm().profile() == null, "short profile retained with rejection enabled");
                         for (var id : List.of(emptyFarm, saturatedFarm)) {
-                            command(a, "delete --id " + id); command(a, "delete --id " + id + " confirm");
+                            command(a, "unregister --id " + id); command(a, "unregister --id " + id + " confirm");
                         }
                         check(storage.loadAll().isEmpty() && tickets(blocks) == 0, "short-profile run leaked files/tickets");
                         pass("SHORT_PROFILE_PASSED", "3600 actual ticks: 200-tick saturated segment rejected with 600-tick minimum enabled; zero output also rejected");
@@ -131,7 +131,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                     check(profile.usefulTicks() == 200 && profile.ratesPer20Ticks().equals(Map.of(Material.STONE, 0.1)),
                             "saturation must omit the full sample and flat tail: " + profile);
                     for (var id : List.of(emptyFarm, saturatedFarm)) {
-                        command(a, "delete --id " + id); command(a, "delete --id " + id + " confirm");
+                        command(a, "unregister --id " + id); command(a, "unregister --id " + id + " confirm");
                     }
                     check(tickets(blocks) == 0, "auxiliary profiling leaked tickets");
                     pass("C04_EMPTY_SATURATED", "3600 actual ticks: zero output rejected; saturated profile uses 200 ticks and rate=0.1; short-segment rejection disabled");
@@ -154,7 +154,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 otherExperience = b.getTotalExperience();
                 command(a, "profile --id " + blockFarm);
                 state(blockFarm, State.PROFILING);
-                command(a, "cancel --id " + blockFarm);
+                command(a, "cancel-profiling --id " + blockFarm);
                 state(blockFarm, State.NEEDS_PROFILING);
                 check(tickets(blocks) == 0, "cancel leaked tickets");
                 pass("C04_CANCEL", "production /bake profile + cancel; original retained and tickets released");
@@ -218,8 +218,8 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 }
                 check(chickens() == 0, "original chickens remain in stasis");
                 pass("C05", "both cuboids entirely bedrock; original chickens absent; only output tickets retained");
-                command(a, "delete --id " + blockFarm);
-                command(a, "delete --id " + blockFarm + " confirm");
+                command(a, "unregister --id " + blockFarm);
+                command(a, "unregister --id " + blockFarm + " confirm");
                 state(blockFarm, State.STASIS);
                 check(Files.exists(root.resolve(blockFarm.toString()).resolve("stasis.yml")), "delete lost active snapshot");
                 next(4);
@@ -234,7 +234,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 check(a.getTotalExperience() == creatorExperience && b.getTotalExperience() == otherExperience,
                         "emulation awarded player experience");
                 pass("C06_C07", "exact 4000-tick inventory + buffer + fraction accounting for every type; plain swords; no XP orbs");
-                command(a, "restore --id " + entityFarm);
+                command(a, "unstasis --id " + entityFarm);
                 restored(entityFarm);
                 check(chickens() == 8, "restored chicken count differs");
                 pass("C09_ENTITIES", "8 chickens and snapshot-marker inventory restored; profile invalidated");
@@ -268,7 +268,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 if (elapsed < 200) return;
                 verifyProduction(blockFarm, 200, Map.of(), plateau);
                 pass("C08_RESUME", "freed output: pending buffer delivered and exact production resumed");
-                command(a, "restore --id " + blockFarm); restored(blockFarm);
+                command(a, "unstasis --id " + blockFarm); restored(blockFarm);
                 pass("C09_BLOCKS", "cactus, hoppers, internal marker restored after process restart");
                 command(a, "stasis --id " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "profile --id " + blockFarm); command(a, "profile --id " + entityFarm);
@@ -288,15 +288,15 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "stasis --id " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "stasis --id " + entityFarm); state(entityFarm, State.STASIS);
-                command(a, "restore --id " + entityFarm); restored(entityFarm);
+                command(a, "unstasis --id " + entityFarm); restored(entityFarm);
                 for (var id : List.of(blockFarm, entityFarm)) {
-                    command(b, "delete --id " + id); command(b, "delete --id " + id + " confirm");
+                    command(b, "unregister --id " + id); command(b, "unregister --id " + id + " confirm");
                     check(Files.exists(root.resolve(id.toString())), "noncreator deleted farm");
-                    command(a, "delete --id " + id + " confirm");
+                    command(a, "unregister --id " + id + " confirm");
                     check(Files.exists(root.resolve(id.toString())), "confirmation without request deleted farm");
-                    command(a, "delete --id " + id);
+                    command(a, "unregister --id " + id);
                     check(Files.exists(root.resolve(id.toString())), "unconfirmed request deleted farm");
-                    command(a, "delete --id " + id + " confirm");
+                    command(a, "unregister --id " + id + " confirm");
                     check(!Files.exists(root.resolve(id.toString())), "confirmed delete retained farm files");
                 }
                 check(storage.loadAll().isEmpty(), "registrations remain after delete");
@@ -353,7 +353,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
     }
 
     private void rights(UUID id) {
-        for (String op : List.of("profile", "cancel", "stasis", "restore", "delete")) command(b, op + " --id " + id);
+        for (String op : List.of("profile", "cancel-profiling", "stasis", "unstasis", "unregister")) command(b, op + " --id " + id);
         state(id, State.NEEDS_PROFILING);
         var command = getServer().getPluginCommand("bake");
         var completions = command.tabComplete(b, "bake", new String[]{"profile", "--id", ""});

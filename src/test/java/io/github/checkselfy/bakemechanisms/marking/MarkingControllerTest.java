@@ -167,10 +167,10 @@ class MarkingControllerTest {
     }
 
     @Test
-    void clearDiscardsSelectionAndInvalidUuidHasReadableError() {
+    void unselectDiscardsSelectionAndInvalidUuidHasReadableError() {
         selectCorners();
         selectOutput(32);
-        run("clear");
+        run("unselect");
         run("register");
         run("info", "--id", "invalid");
         assertTrue(registry.findByCreator(creator).isEmpty());
@@ -180,7 +180,7 @@ class MarkingControllerTest {
     @Test
     void sneakingRightClickChoosesOutputWithoutReplacingSecondCorner() {
         var anchor = selectOutput(32);
-        run("clear");
+        run("unselect");
         selectCorners();
         when(player.isSneaking()).thenReturn(true);
         click(Action.RIGHT_CLICK_BLOCK, anchor);
@@ -227,7 +227,7 @@ class MarkingControllerTest {
         when(world.getBlockAt(x, 0, 0)).thenReturn(anchor);
         when(outputs.resolve(anchor)).thenReturn(output);
         when(player.getTargetBlockExact(6)).thenReturn(anchor);
-        run("output");
+        run("select-output");
         return anchor;
     }
 
@@ -306,6 +306,49 @@ class MarkingControllerTest {
 
         verify(player, never()).sendMessage(contains("Ускоряем"));
         verify(player).sendMessage(contains("не удалось"));
+    }
+
+    @Test
+    void renamedCommandsPointToTheirNewNamesWithoutActing() {
+        selectCorners();
+        selectOutput(32);
+        run("register", "Iron");
+        var renames = java.util.Map.of("output", "select-output", "clear", "unselect",
+                "cancel", "cancel-profiling", "restore", "unstasis", "delete", "unregister");
+        for (var rename : renames.entrySet()) {
+            run(rename.getKey(), "Iron");
+            verify(player).sendMessage("Команда /bake " + rename.getKey() + " переименована: используйте /bake "
+                    + rename.getValue() + ".");
+        }
+        verifyNoInteractions(profiling);
+        assertEquals(1, registry.findByCreator(creator).size());
+    }
+
+    @Test
+    void completionOffersOnlyTheNewNames() {
+        when(player.hasPermission("minecraft.command.tick")).thenReturn(true);
+        var all = controller.onTabComplete(player, command, "bake", new String[] { "" });
+        assertTrue(all.containsAll(java.util.List.of("select-output", "unselect", "cancel-profiling", "unregister")));
+        for (var old : java.util.List.of("output", "clear", "cancel", "delete")) assertFalse(all.contains(old), old);
+        assertEquals(java.util.List.of("unselect", "unregister"),
+                controller.onTabComplete(player, command, "bake", new String[] { "un" }));
+        selectCorners();
+        selectOutput(32);
+        run("register", "Iron");
+        assertEquals(java.util.List.of("Iron", "--id"),
+                controller.onTabComplete(player, command, "bake", new String[] { "cancel-profiling", "" }));
+        assertEquals(java.util.List.of("confirm"),
+                controller.onTabComplete(player, command, "bake", new String[] { "unregister", "Iron", "c" }));
+    }
+
+    @Test
+    void cancelProfilingCancelsTheNamedFarm() {
+        selectCorners();
+        selectOutput(32);
+        run("register", "Iron");
+        var farm = registry.findByCreator(creator).getFirst();
+        run("cancel-profiling", "Iron");
+        verify(profiling).cancel(farm.id(), creator);
     }
 
     private void run(String... args) {

@@ -128,7 +128,7 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                     pass("ACCOUNTING", farm.id() + " ticks=2000 type=" + rate.getKey() + " produced=" + actual
                             + " fraction=" + progress.outputs().getFirst().fractions().get(rate.getKey()));
                 }
-                command("restore --id " + ids.get(farm.id()));
+                command("unstasis --id " + ids.get(farm.id()));
                 check(stored(farm).farm().state().name().equals("NEEDS_PROFILING"), "restore failed " + farm.id());
                 eachBlock(farm, block -> {
                     check(block.getBlockData().getAsString().equals(blockStates.get(farm.id()).get(key(block))),

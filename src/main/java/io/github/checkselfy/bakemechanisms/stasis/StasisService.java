@@ -77,7 +77,7 @@ public final class StasisService {
         } catch (RuntimeException error) {
             // Only a complete filler stands in for the mechanism; a remaining original must not run alongside.
             if (refill(farm, error)) production.start(stasisFarm);
-            throw new IllegalArgumentException("Ошибка замены механизма. Снимок сохранён; используйте /bake restore "
+            throw new IllegalArgumentException("Ошибка замены механизма. Снимок сохранён; используйте /bake unstasis "
                     + farmId + ".", error);
         }
         production.start(stasisFarm);

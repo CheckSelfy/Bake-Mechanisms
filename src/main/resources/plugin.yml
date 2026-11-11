@@ -6,5 +6,5 @@ description: Profiles and emulates resource-producing farms.
 commands:
   bake:
     description: Разметка, профилирование, стазис, восстановление и удаление автоферм.
-    usage: "/bake wand | output | register [name] | list | info <farm> | rename <farm> <name> | profile <farm> | sprint <farm> | cancel <farm> | stasis <farm> | restore <farm> | delete <farm> [confirm] | clear; <farm> is a name or --id <UUID>"
+    usage: "/bake wand | select-output | unselect | register [name] | list | info <farm> | rename <farm> <name> | profile <farm> | sprint <farm> | cancel-profiling <farm> | stasis <farm> | unstasis <farm> | unregister <farm> [confirm]; <farm> is a name or --id <UUID>"
     aliases: [bm]
