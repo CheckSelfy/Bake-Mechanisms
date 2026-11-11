@@ -620,7 +620,8 @@ public final class CorrectnessPlugin extends JavaPlugin {
     }
     private void filler(World world) {
         var region = farm(world.equals(blocks) ? blockFarm : entityFarm).farm().mechanism();
-        var generator = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region, io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
+        var generator = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region, io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT
+                .forFarm(farm(world.equals(blocks) ? blockFarm : entityFarm).farm()));
         for (int x = 0; x < 16; x++) for (int y = 63; y <= 70; y++) for (int z = 0; z < 16; z++)
             check(world.getBlockAt(x, y, z).getType() == generator.material(x,y-63,z), "incomplete filler " + world.getName());
     }

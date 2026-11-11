@@ -19,7 +19,9 @@ emulation:
 stasis:
   filler:
     # Applies to new stasis operations; existing snapshots retain their own appearance.
-    # AUTO chooses the widest vertical face, SOUTH on a tie. Or NORTH/SOUTH/EAST/WEST.
+    # AUTO faces the side with most output containers (a double chest counts once).
+    # Ties prefer the widest face (SOUTH on a square), then NORTH/SOUTH/EAST/WEST order.
+    # Or explicitly choose NORTH/SOUTH/EAST/WEST.
     front: AUTO
     # Local, mirrored patterns: BANDS or PANELS. No randomness or animation.
     pattern: BANDS

@@ -8,7 +8,9 @@ import org.bukkit.block.Block;
 final class FillerAssertions {
     private FillerAssertions() {}
     static boolean matches(Block block,Cuboid region) {
-        return block.getType()==new SlimeFiller(region,FillerStyle.DEFAULT).material((long)block.getX()-region.min().x(),
+        // These legacy fixtures all place their only output against the east face.
+        var style=new FillerStyle(1,FillerStyle.Front.EAST,FillerStyle.Pattern.BANDS,3,FillerStyle.DEFAULT_PALETTE);
+        return block.getType()==new SlimeFiller(region,style).material((long)block.getX()-region.min().x(),
                 (long)block.getY()-region.min().y(),(long)block.getZ()-region.min().z());
     }
 }

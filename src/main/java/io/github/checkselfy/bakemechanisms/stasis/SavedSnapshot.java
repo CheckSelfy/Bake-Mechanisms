@@ -13,7 +13,7 @@ public record SavedSnapshot(MarkedFarm farm, byte[] data, FillerStyle filler) {
         data = Objects.requireNonNull(data, "data").clone();
         if (data.length == 0) throw new IllegalArgumentException("Пустой снимок.");
         Objects.requireNonNull(filler,"filler");
-        filler=filler.forRegion(farm.mechanism());
+        filler=filler.forFarm(farm);
     }
 
     @Override public byte[] data() { return data.clone(); }

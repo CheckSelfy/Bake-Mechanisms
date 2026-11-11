@@ -235,7 +235,8 @@ final class ClientAcceptanceReview {
                 actions.add(() -> {
                     var region = storage.loadAll().stream().filter(f -> f.farm().id().equals(farm)).findFirst().orElseThrow().farm().mechanism();
                     var filler = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region,
-                            io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
+                            io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT.forFarm(
+                                    storage.loadAll().stream().filter(f -> f.farm().id().equals(farm)).findFirst().orElseThrow().farm()));
                     require(world.getBlockAt(x, 64, 0).getType() == filler.material(x-region.min().x(),64-region.min().y(),-region.min().z()),
                             "wire break damaged filler in " + breakMode);
                 });

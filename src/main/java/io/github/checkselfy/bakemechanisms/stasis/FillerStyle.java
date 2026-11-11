@@ -1,6 +1,8 @@
 package io.github.checkselfy.bakemechanisms.stasis;
 
 import io.github.checkselfy.bakemechanisms.marking.Cuboid;
+import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
+import java.util.EnumMap;
 import java.util.Locale;
 import java.util.Objects;
 import org.bukkit.Material;
@@ -47,6 +49,33 @@ public record FillerStyle(int version, Front front, Pattern pattern, int patchSi
         long width = (long) region.max().x()-region.min().x()+1;
         long depth = (long) region.max().z()-region.min().z()+1;
         return new FillerStyle(version,width >= depth ? Front.SOUTH : Front.EAST,pattern,patchSize,palette);
+    }
+
+    /** Each output inventory has one vote, including a double chest. Vertical-only outputs have no side vote. */
+    public FillerStyle forFarm(MarkedFarm farm) {
+        if (front != Front.AUTO) return this;
+        var preferred = forRegion(farm.mechanism()).front();
+        var votes = new EnumMap<Front,Integer>(Front.class);
+        for (var output : farm.outputs()) {
+            long x = output.blocks().stream().mapToLong(block -> block.x()).sum();
+            long z = output.blocks().stream().mapToLong(block -> block.z()).sum();
+            int count = output.blocks().size();
+            var min = farm.mechanism().min(); var max = farm.mechanism().max();
+            var distances = new EnumMap<Front,Long>(Front.class);
+            distances.put(Front.WEST, (long) min.x()*count-x);
+            distances.put(Front.EAST, x-(long) max.x()*count);
+            distances.put(Front.NORTH, (long) min.z()*count-z);
+            distances.put(Front.SOUTH, z-(long) max.z()*count);
+            long largest = distances.values().stream().mapToLong(Long::longValue).max().orElse(0);
+            if (largest <= 0) continue;
+            var side = distances.get(preferred)==largest ? preferred : distances.entrySet().stream()
+                    .filter(entry -> entry.getValue()==largest).findFirst().orElseThrow().getKey();
+            votes.merge(side,1,Integer::sum);
+        }
+        int most = votes.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        var selected = votes.getOrDefault(preferred,0)==most ? preferred : votes.entrySet().stream()
+                .filter(entry -> entry.getValue()==most).findFirst().orElseThrow().getKey();
+        return new FillerStyle(version,selected,pattern,patchSize,palette);
     }
 
     public static FillerStyle fromConfig(ConfigurationSection config) {

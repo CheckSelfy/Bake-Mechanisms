@@ -206,7 +206,7 @@ final class MobFarmReview implements Listener {
                 require(stored(farm).farm().state() == State.STASIS, "mob farm failed to enter stasis");
                 var region = stored(farm).farm().mechanism();
                 var filler = new io.github.checkselfy.bakemechanisms.stasis.SlimeFiller(region,
-                        io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT);
+                        io.github.checkselfy.bakemechanisms.stasis.FillerStyle.DEFAULT.forFarm(stored(farm).farm()));
                 each(farm, block -> require(block.getType() == filler.material(block.getX()-region.min().x(),
                         block.getY()-region.min().y(),block.getZ()-region.min().z()), "mob mechanism not entirely filler"));
             }
