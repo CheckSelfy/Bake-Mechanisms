@@ -38,11 +38,11 @@ class StasisEmulationServiceTest {
         assertEquals(Set.of(OUTPUT_CHUNK), world.tickets);
 
         tick(19);
-        assertTrue(world.items(farm.output()).isEmpty(), "output updates only on the interval");
+        assertTrue(world.items(farm.outputs().get(0)).isEmpty(), "output updates only on the interval");
         tick(1);
-        assertEquals(Map.of(Material.COBBLESTONE, 1), world.items(farm.output()));
+        assertEquals(Map.of(Material.COBBLESTONE, 1), world.items(farm.outputs().get(0)));
         tick(20);
-        assertEquals(Map.of(Material.COBBLESTONE, 3), world.items(farm.output()));
+        assertEquals(Map.of(Material.COBBLESTONE, 3), world.items(farm.outputs().get(0)));
     }
 
     @Test
@@ -50,28 +50,28 @@ class StasisEmulationServiceTest {
         var farm = stasis(Map.of(Material.KELP, 0.25));
         service.start(farm, empty());
         tick(60); // 0.75 kelp, still fractional
-        assertTrue(world.items(farm.output()).isEmpty());
+        assertTrue(world.items(farm.outputs().get(0)).isEmpty());
         var saved = store.emulation.get(farm.id());
-        assertEquals(0, saved.fractions().get(Material.KELP).compareTo(new java.math.BigDecimal("0.75")));
+        assertEquals(0, saved.outputs().get(0).fractions().get(Material.KELP).compareTo(new java.math.BigDecimal("0.75")));
         service.stopAll();
         assertTrue(world.tickets.isEmpty(), "shutdown releases the output chunk");
 
         var restarted = new StasisEmulationService(world, tickets, EmulationSettings.DEFAULT, store);
         restarted.start(farm, saved);
         for (int i = 0; i < 20; i++) restarted.tick();
-        assertEquals(Map.of(Material.KELP, 1), world.items(farm.output()));
+        assertEquals(Map.of(Material.KELP, 1), world.items(farm.outputs().get(0)));
     }
 
     @Test
     void idleUpdatesDoNotRewriteUnchangedState() {
         var farm = stasis(Map.of(Material.KELP, 1.0));
-        world.capacity.put(farm.output(), 0);
+        world.capacity.put(farm.outputs().get(0), 0);
         service.start(farm, empty());
         tick(20); // one kelp waits in the buffer
         int writes = store.writes;
         tick(200);
         assertEquals(writes, store.writes);
-        assertEquals(Map.of(Material.KELP, 1), store.emulation.get(farm.id()).buffer());
+        assertEquals(Map.of(Material.KELP, 1), store.emulation.get(farm.id()).outputs().get(0).buffer());
     }
 
     @Test
@@ -80,32 +80,32 @@ class StasisEmulationServiceTest {
         service.start(farm, empty());
         service.pause(farm.id());
         tick(100);
-        assertTrue(world.items(farm.output()).isEmpty(), "no production while the original is being restored");
+        assertTrue(world.items(farm.outputs().get(0)).isEmpty(), "no production while the original is being restored");
         service.resume(farm.id()); // restore failed: the filler is back
         tick(20);
-        assertEquals(Map.of(Material.KELP, 1), world.items(farm.output()));
+        assertEquals(Map.of(Material.KELP, 1), world.items(farm.outputs().get(0)));
     }
 
     @Test
     void restoredFarmStopsProducingButDeliversLeftoverBufferAsSpaceAppears() {
         var farm = stasis(Map.of(Material.BONE, 5.0));
-        world.capacity.put(farm.output(), 7);
+        world.capacity.put(farm.outputs().get(0), 7);
         service.start(farm, empty());
         tick(40); // 10 bones produced, 7 fit, 3 buffered
         service.pause(farm.id());
         service.finish(farm.id());
         assertTrue(service.draining(farm.id()));
-        assertEquals(Map.of(Material.BONE, 3), store.drains.get(farm.id()));
+        assertEquals(List.of(Map.of(Material.BONE, 3)), store.drains.get(farm.id()));
         assertEquals(Set.of(OUTPUT_CHUNK), world.tickets, "output stays loaded while the buffer drains");
 
-        world.outputs.get(farm.output()).put(Material.BONE, 5); // a hopper took 2 bones
+        world.outputs.get(farm.outputs().get(0)).put(Material.BONE, 5); // a hopper took 2 bones
         tick(20);
-        assertEquals(Map.of(Material.BONE, 7), world.items(farm.output()));
-        assertEquals(Map.of(Material.BONE, 1), store.drains.get(farm.id()));
+        assertEquals(Map.of(Material.BONE, 7), world.items(farm.outputs().get(0)));
+        assertEquals(List.of(Map.of(Material.BONE, 1)), store.drains.get(farm.id()));
 
-        world.outputs.get(farm.output()).clear();
+        world.outputs.get(farm.outputs().get(0)).clear();
         tick(200);
-        assertEquals(Map.of(Material.BONE, 1), world.items(farm.output()), "no new production after restore");
+        assertEquals(Map.of(Material.BONE, 1), world.items(farm.outputs().get(0)), "no new production after restore");
         assertFalse(service.draining(farm.id()));
         assertFalse(store.drains.containsKey(farm.id()));
         assertTrue(world.tickets.isEmpty());
@@ -127,17 +127,17 @@ class StasisEmulationServiceTest {
         var farm = stasis(Map.of(Material.KELP, 1.0));
         service.start(farm, empty());
         tick(20);
-        var items = world.outputs.remove(farm.output());
+        var items = world.outputs.remove(farm.outputs().get(0));
         tick(100);
         assertEquals(1, world.messages.get(creator).size());
         assertTrue(world.messages.get(creator).getFirst().contains("сохранён"));
         assertEquals(Set.of(OUTPUT_CHUNK), world.tickets);
 
-        world.outputs.put(farm.output(), items); // container rebuilt
+        world.outputs.put(farm.outputs().get(0), items); // container rebuilt
         tick(20);
         // One kelp waited in the buffer during the loss (production paused), plus this interval's kelp.
-        assertEquals(Map.of(Material.KELP, 3), world.items(farm.output()));
-        world.outputs.remove(farm.output());
+        assertEquals(Map.of(Material.KELP, 3), world.items(farm.outputs().get(0)));
+        world.outputs.remove(farm.outputs().get(0));
         tick(20);
         assertEquals(2, world.messages.get(creator).size(), "a new loss is reported again");
     }
@@ -145,32 +145,33 @@ class StasisEmulationServiceTest {
     @Test
     void lostOutputDuringDrainKeepsLeftoverBuffer() {
         var farm = stasis(Map.of(Material.BONE, 5.0));
-        world.capacity.put(farm.output(), 0);
+        world.capacity.put(farm.outputs().get(0), 0);
         service.start(farm, empty());
         tick(20);
         service.finish(farm.id());
-        var items = world.outputs.remove(farm.output());
+        var items = world.outputs.remove(farm.outputs().get(0));
         tick(100);
         assertTrue(service.draining(farm.id()));
-        assertEquals(Map.of(Material.BONE, 5), store.drains.get(farm.id()));
-        assertEquals(1, world.messages.get(creator).size());
-        world.outputs.put(farm.output(), items);
-        world.capacity.remove(farm.output());
+        assertEquals(List.of(Map.of(Material.BONE, 5)), store.drains.get(farm.id()));
+        assertEquals(1, world.messages.get(creator).stream().filter(message -> message.contains("недоступен"))
+                .count(), "the loss is reported once");
+        world.outputs.put(farm.outputs().get(0), items);
+        world.capacity.remove(farm.outputs().get(0));
         tick(20);
-        assertEquals(Map.of(Material.BONE, 5), world.items(farm.output()));
+        assertEquals(Map.of(Material.BONE, 5), world.items(farm.outputs().get(0)));
         assertFalse(service.draining(farm.id()));
     }
 
     @Test
     void leftoverBufferContinuesDrainingAfterRestart() {
         var farm = stasis(Map.of(Material.BONE, 5.0));
-        var restored = new MarkedFarm(farm.id(), creator, farm.mechanism(), farm.output(), State.NEEDS_PROFILING,
+        var restored = new MarkedFarm(farm.id(), creator, farm.mechanism(), farm.outputs().get(0), State.NEEDS_PROFILING,
                 null);
-        service.drain(restored, Map.of(Material.BONE, 4));
+        service.drain(restored, List.of(Map.of(Material.BONE, 4)));
         assertTrue(service.draining(farm.id()));
         assertEquals(Set.of(OUTPUT_CHUNK), world.tickets);
         tick(20);
-        assertEquals(Map.of(Material.BONE, 4), world.items(farm.output()));
+        assertEquals(Map.of(Material.BONE, 4), world.items(farm.outputs().get(0)));
         assertFalse(service.draining(farm.id()));
         assertTrue(world.tickets.isEmpty());
     }
@@ -178,14 +179,66 @@ class StasisEmulationServiceTest {
     @Test
     void shutdownSavesLeftoverBufferAgainSoAFailedWriteLosesNothing() {
         var farm = stasis(Map.of(Material.BONE, 5.0));
-        world.capacity.put(farm.output(), 0);
+        world.capacity.put(farm.outputs().get(0), 0);
         service.start(farm, empty());
         tick(20);
         service.finish(farm.id());
         store.drains.clear(); // the write in finish failed
         service.stopAll();
-        assertEquals(Map.of(Material.BONE, 5), store.drains.get(farm.id()));
+        assertEquals(List.of(Map.of(Material.BONE, 5)), store.drains.get(farm.id()));
         assertTrue(world.tickets.isEmpty());
+    }
+
+    @Test
+    void oneFullOutputPausesAllOutputsWithOneMessageAndProductionResumesOnceEveryBufferIsDelivered() {
+        var kelp = new OutputContainer(OutputContainer.Type.CHEST, Set.of(block(50, 0, 0)));
+        var bamboo = new OutputContainer(OutputContainer.Type.BARREL, Set.of(block(52, 0, 0)));
+        world.outputs.put(kelp, new EnumMap<>(Material.class));
+        world.outputs.put(bamboo, new EnumMap<>(Material.class));
+        var farm = new MarkedFarm(UUID.randomUUID(), creator, "Swamp", new Cuboid(block(0, 0, 0), block(5, 5, 5)),
+                List.of(kelp, bamboo), State.STASIS, new ProductionProfile(
+                        List.of(Map.of(Material.KELP, 2.0), Map.of(Material.BAMBOO, 1.0)), 3600));
+        world.capacity.put(bamboo, 1);
+        service.start(farm, empty());
+
+        tick(20);
+        assertEquals(List.of(), world.messages.getOrDefault(creator, List.of()), "both outputs accepted everything");
+        tick(20); // bamboo does not fit: production of both outputs stops
+        tick(100);
+        assertEquals(Map.of(Material.KELP, 4), world.items(kelp));
+        assertEquals(Map.of(Material.BAMBOO, 1), world.items(bamboo));
+        var paused = world.messages.get(creator);
+        assertEquals(1, paused.size(), "the creator is told once per pause");
+        assertTrue(paused.getFirst().contains("Swamp") && paused.getFirst().contains("№2")
+                && paused.getFirst().contains("приостановлено"), paused.getFirst());
+
+        world.capacity.remove(bamboo);
+        tick(20); // the buffered bamboo is delivered and both outputs produce again
+        assertEquals(Map.of(Material.KELP, 6), world.items(kelp));
+        assertEquals(Map.of(Material.BAMBOO, 3), world.items(bamboo));
+        assertEquals(2, world.messages.get(creator).size());
+        assertTrue(world.messages.get(creator).get(1).contains("возобновлено"), world.messages.get(creator).get(1));
+    }
+
+    @Test
+    void leftoverBufferOfEveryOutputIsDeliveredToThatOutput() {
+        var first = new OutputContainer(OutputContainer.Type.CHEST, Set.of(block(50, 0, 0)));
+        var second = new OutputContainer(OutputContainer.Type.CHEST, Set.of(block(52, 0, 0)));
+        world.outputs.put(first, new EnumMap<>(Material.class));
+        world.outputs.put(second, new EnumMap<>(Material.class));
+        var farm = new MarkedFarm(UUID.randomUUID(), creator, null, new Cuboid(block(0, 0, 0), block(5, 5, 5)),
+                List.of(first, second), State.NEEDS_PROFILING, null);
+        world.capacity.put(second, 2);
+        service.drain(farm, List.of(Map.of(Material.BONE, 3), Map.of(Material.ARROW, 5)));
+
+        tick(20);
+        assertEquals(Map.of(Material.BONE, 3), world.items(first));
+        assertEquals(Map.of(Material.ARROW, 2), world.items(second));
+        assertEquals(List.of(Map.of(), Map.of(Material.ARROW, 3)), store.drains.get(farm.id()));
+        world.capacity.remove(second);
+        tick(20);
+        assertEquals(Map.of(Material.ARROW, 5), world.items(second));
+        assertFalse(service.draining(farm.id()));
     }
 
     private void tick(int ticks) {
@@ -193,7 +246,7 @@ class StasisEmulationServiceTest {
     }
 
     private static EmulationState empty() {
-        return new EmulationState(Map.of(), Map.of());
+        return EmulationState.EMPTY;
     }
 
     private MarkedFarm stasis(Map<Material, Double> rates) {
@@ -209,7 +262,7 @@ class StasisEmulationServiceTest {
 
     static final class FakeStore implements EmulationStore {
         final Map<UUID, EmulationState> emulation = new HashMap<>();
-        final Map<UUID, Map<Material, Integer>> drains = new HashMap<>();
+        final Map<UUID, List<Map<Material, Integer>>> drains = new HashMap<>();
         int writes;
 
         @Override
@@ -219,9 +272,9 @@ class StasisEmulationServiceTest {
         }
 
         @Override
-        public void saveDrain(UUID farmId, Map<Material, Integer> buffer) {
+        public void saveDrain(UUID farmId, List<Map<Material, Integer>> buffers) {
             writes++;
-            drains.put(farmId, Map.copyOf(buffer));
+            drains.put(farmId, buffers.stream().map(Map::copyOf).toList());
         }
 
         @Override

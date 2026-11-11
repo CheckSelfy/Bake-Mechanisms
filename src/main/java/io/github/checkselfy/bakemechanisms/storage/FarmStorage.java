@@ -23,6 +23,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,25 +48,33 @@ public final class FarmStorage implements EmulationStore {
     private static final String DRAIN_FILE = "drain.dat";
     /** Owned by the snapshot store, which shares the farm directory; its presence marks an active snapshot. */
     private static final String ACTIVE_SNAPSHOT_FILE = "stasis.yml";
-    private static final int DRAIN_FORMAT = 1;
+    /** Format 2 of every file holds one entry per output container; format 1 files had a single output. */
+    private static final int DRAIN_FORMAT = 2;
     private static final int DRAIN_MAGIC = 0x4452414e; // "DRAN"
-    private static final int FARM_FORMAT = 1;
-    private static final int EMULATION_FORMAT = 1;
+    private static final int FARM_FORMAT = 2;
+    private static final int EMULATION_FORMAT = 2;
     private static final int EMULATION_MAGIC = 0x42414b45; // "BAKE"
 
     /**
      * @param emulation present only while emulation state was saved for the farm
-     * @param drain leftover buffer of a restored farm, empty when nothing waits for delivery
+     * @param drain leftover buffer of a restored farm for every output in order, empty when nothing waits for
+     *              delivery
      */
-    public record StoredFarm(MarkedFarm farm, Optional<EmulationState> emulation, Map<Material, Integer> drain) {
+    public record StoredFarm(MarkedFarm farm, Optional<EmulationState> emulation,
+                             List<Map<Material, Integer>> drain) {
         public StoredFarm {
             Objects.requireNonNull(farm, "farm");
             Objects.requireNonNull(emulation, "emulation");
-            drain = Map.copyOf(Objects.requireNonNull(drain, "drain"));
+            drain = Objects.requireNonNull(drain, "drain").stream().map(Map::copyOf).toList();
         }
 
         public StoredFarm(MarkedFarm farm, Optional<EmulationState> emulation) {
-            this(farm, emulation, Map.of());
+            this(farm, emulation, List.of());
+        }
+
+        /** True when a restored farm still has leftover items to deliver. */
+        public boolean draining() {
+            return drain.stream().anyMatch(buffer -> !buffer.isEmpty());
         }
     }
 
@@ -81,23 +90,30 @@ public final class FarmStorage implements EmulationStore {
         yaml.set("format", FARM_FORMAT);
         yaml.set("id", farm.id().toString());
         yaml.set("creator", farm.creatorId().toString());
+        if (farm.name() != null) yaml.set("name", farm.name());
         yaml.set("state", farm.state().name());
         var mechanism = farm.mechanism();
         yaml.set("world", mechanism.min().worldId().toString());
         yaml.set("mechanism.min", coordinates(mechanism.min()));
         yaml.set("mechanism.max", coordinates(mechanism.max()));
-        yaml.set("output.type", farm.output().type().name());
-        yaml.set("output.blocks", farm.output().blocks().stream()
-                .sorted(Comparator.comparingInt(BlockPosition::x).thenComparingInt(BlockPosition::y)
-                        .thenComparingInt(BlockPosition::z))
-                .map(FarmStorage::coordinates).toList());
+        yaml.set("outputs", farm.outputs().stream().map(output -> {
+            var entry = new LinkedHashMap<String, Object>();
+            entry.put("type", output.type().name());
+            entry.put("blocks", output.blocks().stream()
+                    .sorted(Comparator.comparingInt(BlockPosition::x).thenComparingInt(BlockPosition::y)
+                            .thenComparingInt(BlockPosition::z))
+                    .map(FarmStorage::coordinates).toList());
+            return entry;
+        }).toList());
         if (farm.profile() != null) {
             yaml.set("profile.useful-ticks", farm.profile().usefulTicks());
-            // Key order is stable for readers; Material.getKey() avoids path separators in YAML keys.
-            var rates = yaml.createSection("profile.rates-per-20-ticks");
-            farm.profile().ratesPer20Ticks().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(rate -> rates.set(rate.getKey().getKey().toString(), rate.getValue()));
+            // One map per output, in output order. Key order is stable for readers; Material.getKey() avoids
+            // path separators in YAML keys.
+            yaml.set("profile.outputs-rates-per-20-ticks", farm.profile().outputs().stream().map(rates -> {
+                var entry = new LinkedHashMap<String, Double>();
+                sorted(rates).forEach(rate -> entry.put(rate.getKey().getKey().toString(), rate.getValue()));
+                return entry;
+            }).toList());
         }
         write(directory(farm.id()).resolve(FARM_FILE), yaml.saveToString().getBytes(StandardCharsets.UTF_8));
         if (farm.profile() == null) deleteEmulation(farm.id());
@@ -110,12 +126,15 @@ public final class FarmStorage implements EmulationStore {
         try (var out = new DataOutputStream(bytes)) {
             out.writeInt(EMULATION_MAGIC);
             out.writeInt(EMULATION_FORMAT);
-            out.writeInt(state.fractions().size());
-            for (var entry : sorted(state.fractions())) {
-                out.writeUTF(entry.getKey().getKey().toString());
-                out.writeUTF(entry.getValue().toString());
+            out.writeInt(state.outputs().size());
+            for (var output : state.outputs()) {
+                out.writeInt(output.fractions().size());
+                for (var entry : sorted(output.fractions())) {
+                    out.writeUTF(entry.getKey().getKey().toString());
+                    out.writeUTF(entry.getValue().toString());
+                }
+                writeBuffer(out, output.buffer());
             }
-            writeBuffer(out, state.buffer());
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -124,12 +143,13 @@ public final class FarmStorage implements EmulationStore {
 
     /** @throws UncheckedIOException when the file cannot be written; the previous file then stays intact */
     @Override
-    public void saveDrain(UUID farmId, Map<Material, Integer> buffer) {
+    public void saveDrain(UUID farmId, List<Map<Material, Integer>> buffers) {
         var bytes = new ByteArrayOutputStream();
         try (var out = new DataOutputStream(bytes)) {
             out.writeInt(DRAIN_MAGIC);
             out.writeInt(DRAIN_FORMAT);
-            writeBuffer(out, buffer);
+            out.writeInt(buffers.size());
+            for (var buffer : buffers) writeBuffer(out, buffer);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -256,7 +276,8 @@ public final class FarmStorage implements EmulationStore {
         } catch (InvalidConfigurationException error) {
             throw new InvalidFile(file, "not valid YAML", error);
         }
-        if (yaml.getInt("format") != FARM_FORMAT) {
+        int format = yaml.getInt("format");
+        if (format != 1 && format != FARM_FORMAT) {
             throw new InvalidFile(file, "unsupported format " + yaml.get("format") + ", expected " + FARM_FORMAT);
         }
         var id = read(file, "id", () -> UUID.fromString(required(file, yaml, "id")));
@@ -269,15 +290,21 @@ public final class FarmStorage implements EmulationStore {
         var mechanism = read(file, "mechanism", () -> new Cuboid(
                 position(file, world, "mechanism.min", yaml.getList("mechanism.min", List.of())),
                 position(file, world, "mechanism.max", yaml.getList("mechanism.max", List.of()))));
-        var output = read(file, "output container", () -> {
-            var blocks = new LinkedHashSet<BlockPosition>();
-            for (var block : yaml.getList("output.blocks", List.of())) {
-                if (!(block instanceof List<?> coordinates)) {
-                    throw new InvalidFile(file, "output.blocks must hold [x, y, z] lists");
-                }
-                blocks.add(position(file, world, "output.blocks", coordinates));
+        var name = read(file, "name", () -> yaml.getString("name"));
+        var outputs = read(file, "output containers", () -> {
+            if (format == 1) {
+                return List.of(output(file, world, yaml.getString("output.type"),
+                        yaml.getList("output.blocks", List.of())));
             }
-            return new OutputContainer(OutputContainer.Type.valueOf(required(file, yaml, "output.type")), blocks);
+            var list = new ArrayList<OutputContainer>();
+            for (var entry : yaml.getMapList("outputs")) {
+                if (!(entry.get("blocks") instanceof List<?> blocks)) {
+                    throw new InvalidFile(file, "outputs must hold type and blocks");
+                }
+                var type = entry.get("type");
+                list.add(output(file, world, type == null ? null : type.toString(), blocks));
+            }
+            return List.copyOf(list);
         });
         var profileSection = yaml.getConfigurationSection("profile");
         boolean profiled = state == State.READY || state == State.STASIS;
@@ -287,40 +314,56 @@ public final class FarmStorage implements EmulationStore {
         if (!profiled && profileSection != null) {
             throw new InvalidFile(file, "state " + state + " must not have a profile (only READY and STASIS have one)");
         }
-        var profile = profileSection == null ? null : read(file, "profile", () -> profile(file, profileSection));
-        var farm = new MarkedFarm(id, creator, mechanism, output, state, profile);
+        var profile = profileSection == null ? null
+                : read(file, "profile", () -> profile(file, format, profileSection));
+        var farm = read(file, "farm", () -> new MarkedFarm(id, creator, name, mechanism, outputs, state, profile));
 
-        Map<Material, Integer> drain = Map.of();
+        List<Map<Material, Integer>> drain = List.of();
         var drainFile = dir.resolve(DRAIN_FILE);
         if (Files.exists(drainFile)) {
             var drainBytes = Files.readAllBytes(drainFile);
             drain = read(drainFile, "leftover buffer", () -> drain(drainFile, drainBytes));
+            if (drain.size() != outputs.size()) {
+                throw new InvalidFile(drainFile, "leftover buffer has " + drain.size() + " outputs, the farm "
+                        + outputs.size());
+            }
         }
         var emulationFile = dir.resolve(EMULATION_FILE);
         if (!Files.exists(emulationFile)) return new StoredFarm(farm, Optional.empty(), drain);
         if (profile == null) throw new InvalidFile(emulationFile, "emulation state without a profile");
         var bytes = Files.readAllBytes(emulationFile);
         var emulation = read(emulationFile, "emulation state", () -> emulation(emulationFile, bytes));
-        var produced = profile.ratesPer20Ticks().keySet();
-        if (!produced.containsAll(emulation.fractions().keySet()) || !produced.containsAll(emulation.buffer().keySet())) {
-            throw new InvalidFile(emulationFile, "emulation state holds items the profile does not produce");
+        if (emulation.outputs().size() != profile.outputs().size()) {
+            throw new InvalidFile(emulationFile, "emulation state has " + emulation.outputs().size()
+                    + " outputs, the profile " + profile.outputs().size());
+        }
+        for (int i = 0; i < emulation.outputs().size(); i++) {
+            var produced = profile.outputs().get(i).keySet();
+            var output = emulation.outputs().get(i);
+            if (!produced.containsAll(output.fractions().keySet()) || !produced.containsAll(output.buffer().keySet())) {
+                throw new InvalidFile(emulationFile, "emulation state holds items the profile does not produce");
+            }
         }
         return new StoredFarm(farm, Optional.of(emulation), drain);
     }
 
-    private static Map<Material, Integer> drain(Path file, byte[] bytes) throws InvalidFile {
+    private static List<Map<Material, Integer>> drain(Path file, byte[] bytes) throws InvalidFile {
         try (var in = new DataInputStream(new ByteArrayInputStream(bytes))) {
             if (in.readInt() != DRAIN_MAGIC) throw new InvalidFile(file, "not a leftover buffer file");
             int format = in.readInt();
-            if (format != DRAIN_FORMAT) {
+            if (format != 1 && format != DRAIN_FORMAT) {
                 throw new InvalidFile(file, "unsupported format " + format + ", expected " + DRAIN_FORMAT);
             }
-            var buffer = readBuffer(file, in);
-            if (buffer.values().stream().anyMatch(amount -> amount < 1)) {
-                throw new InvalidFile(file, "item counts must be positive");
+            var buffers = new ArrayList<Map<Material, Integer>>();
+            for (int i = format == 1 ? 1 : in.readInt(); i > 0; i--) {
+                var buffer = readBuffer(file, in);
+                if (buffer.values().stream().anyMatch(amount -> amount < 1)) {
+                    throw new InvalidFile(file, "item counts must be positive");
+                }
+                buffers.add(buffer);
             }
             if (in.read() != -1) throw new InvalidFile(file, "unexpected trailing data");
-            return buffer;
+            return List.copyOf(buffers);
         } catch (IOException error) {
             throw new InvalidFile(file, "truncated or unreadable", error);
         }
@@ -333,36 +376,65 @@ public final class FarmStorage implements EmulationStore {
         return buffer;
     }
 
-    private static ProductionProfile profile(Path file, ConfigurationSection section) throws InvalidFile {
-        var rates = new EnumMap<Material, Double>(Material.class);
-        var ratesSection = section.getConfigurationSection("rates-per-20-ticks");
-        if (ratesSection == null) throw new InvalidFile(file, "profile.rates-per-20-ticks is missing");
-        for (var key : ratesSection.getKeys(false)) {
-            if (!ratesSection.isDouble(key) && !ratesSection.isInt(key)) {
-                throw new InvalidFile(file, "rate of " + key + " is not a number");
+    private static ProductionProfile profile(Path file, int format, ConfigurationSection section)
+            throws InvalidFile {
+        var outputs = new ArrayList<Map<Material, Double>>();
+        if (format == 1) {
+            var ratesSection = section.getConfigurationSection("rates-per-20-ticks");
+            if (ratesSection == null) throw new InvalidFile(file, "profile.rates-per-20-ticks is missing");
+            outputs.add(rates(file, ratesSection.getValues(false)));
+        } else {
+            if (!section.isList("outputs-rates-per-20-ticks")) {
+                throw new InvalidFile(file, "profile.outputs-rates-per-20-ticks is missing");
             }
-            rates.put(material(file, key), ratesSection.getDouble(key));
+            for (var rates : section.getMapList("outputs-rates-per-20-ticks")) outputs.add(rates(file, rates));
         }
         if (!section.isLong("useful-ticks") && !section.isInt("useful-ticks")) {
             throw new InvalidFile(file, "profile.useful-ticks is missing or not a number");
         }
-        return new ProductionProfile(rates, section.getLong("useful-ticks"));
+        return new ProductionProfile(outputs, section.getLong("useful-ticks"));
+    }
+
+    private static Map<Material, Double> rates(Path file, Map<?, ?> values) throws InvalidFile {
+        var rates = new EnumMap<Material, Double>(Material.class);
+        for (var entry : values.entrySet()) {
+            if (!(entry.getValue() instanceof Number rate)) {
+                throw new InvalidFile(file, "rate of " + entry.getKey() + " is not a number");
+            }
+            rates.put(material(file, String.valueOf(entry.getKey())), rate.doubleValue());
+        }
+        return rates;
+    }
+
+    private static OutputContainer output(Path file, UUID world, String type, List<?> blocks) throws InvalidFile {
+        if (type == null) throw new InvalidFile(file, "output type is missing");
+        var positions = new LinkedHashSet<BlockPosition>();
+        for (var block : blocks) {
+            if (!(block instanceof List<?> coordinates)) {
+                throw new InvalidFile(file, "output blocks must hold [x, y, z] lists");
+            }
+            positions.add(position(file, world, "output blocks", coordinates));
+        }
+        return new OutputContainer(OutputContainer.Type.valueOf(type), positions);
     }
 
     private static EmulationState emulation(Path file, byte[] bytes) throws InvalidFile {
         try (var in = new DataInputStream(new ByteArrayInputStream(bytes))) {
             if (in.readInt() != EMULATION_MAGIC) throw new InvalidFile(file, "not an emulation state file");
             int format = in.readInt();
-            if (format != EMULATION_FORMAT) {
+            if (format != 1 && format != EMULATION_FORMAT) {
                 throw new InvalidFile(file, "unsupported format " + format + ", expected " + EMULATION_FORMAT);
             }
-            var fractions = new EnumMap<Material, BigDecimal>(Material.class);
-            for (int i = in.readInt(); i > 0; i--) {
-                fractions.put(material(file, in.readUTF()), new BigDecimal(in.readUTF()));
+            var outputs = new ArrayList<EmulationState.OutputState>();
+            for (int output = format == 1 ? 1 : in.readInt(); output > 0; output--) {
+                var fractions = new EnumMap<Material, BigDecimal>(Material.class);
+                for (int i = in.readInt(); i > 0; i--) {
+                    fractions.put(material(file, in.readUTF()), new BigDecimal(in.readUTF()));
+                }
+                outputs.add(new EmulationState.OutputState(fractions, readBuffer(file, in)));
             }
-            var buffer = readBuffer(file, in);
             if (in.read() != -1) throw new InvalidFile(file, "unexpected trailing data");
-            return new EmulationState(fractions, buffer);
+            return new EmulationState(outputs);
         } catch (IOException error) {
             throw new InvalidFile(file, "truncated or unreadable", error);
         }

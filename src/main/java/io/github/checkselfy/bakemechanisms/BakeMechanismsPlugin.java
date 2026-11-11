@@ -27,6 +27,7 @@ import io.github.checkselfy.bakemechanisms.storage.FarmStorage;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -48,6 +49,12 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        int maxOutputs = getConfig().getInt("max-output-containers", FarmRegistry.DEFAULT_MAX_OUTPUTS);
+        if (maxOutputs < 1) {
+            getLogger().severe("max-output-containers must be positive; plugin disabled.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         ProfilingSettings settings;
         EmulationSettings emulationSettings;
         try {
@@ -65,7 +72,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
             return;
         }
         var storage = new FarmStorage(getDataFolder().toPath().resolve("farms"));
-        var registry = new FarmRegistry(maxVolume, farm -> {
+        var registry = new FarmRegistry(maxVolume, maxOutputs, farm -> {
             try {
                 storage.save(farm);
             } catch (UncheckedIOException error) {
@@ -95,7 +102,7 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         var paperWorld = new PaperProfilingWorld(this, resolver);
         var tickets = new ChunkTickets(paperWorld);
         // Collected before recovery, which consumes the saved progress of farms in stasis.
-        var drains = stored.values().stream().filter(farmData -> !farmData.drain().isEmpty()).toList();
+        var drains = stored.values().stream().filter(FarmStorage.StoredFarm::draining).toList();
         emulation = new StasisEmulationService(new PaperEmulationWorld(paperWorld), tickets, emulationSettings,
                 loggingStore(storage));
         profiling = new ProfilingService(registry, paperWorld, settings, tickets, emulation::draining);
@@ -155,13 +162,12 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
      */
     private static StasisProduction production(StasisEmulationService emulation,
                                                Map<UUID, FarmStorage.StoredFarm> stored) {
-        var empty = new EmulationState(Map.of(), Map.of());
         return new StasisProduction() {
             @Override public void start(MarkedFarm farm) {
                 var saved = stored.remove(farm.id());
                 var state = saved != null && saved.emulation().isPresent()
                         && Objects.equals(saved.farm().profile(), farm.profile())
-                        ? saved.emulation().get() : empty;
+                        ? saved.emulation().get() : EmulationState.EMPTY;
                 emulation.start(farm, state);
             }
 
@@ -180,8 +186,8 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
                 attempt(farmId, () -> storage.saveEmulation(farmId, state));
             }
 
-            @Override public void saveDrain(UUID farmId, Map<Material, Integer> buffer) {
-                attempt(farmId, () -> storage.saveDrain(farmId, buffer));
+            @Override public void saveDrain(UUID farmId, List<Map<Material, Integer>> buffers) {
+                attempt(farmId, () -> storage.saveDrain(farmId, buffers));
             }
 
             @Override public void deleteDrain(UUID farmId) {

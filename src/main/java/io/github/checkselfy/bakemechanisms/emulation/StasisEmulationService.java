@@ -1,20 +1,24 @@
 package io.github.checkselfy.bakemechanisms.emulation;
 
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
+import io.github.checkselfy.bakemechanisms.marking.OutputContainer;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkPosition;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.bukkit.Material;
 
 /**
- * Produces items for farms in stasis and, after a restore, delivers their leftover buffer. The output chunk
- * stays loaded for both. {@link #tick()} must be called once per server tick; all methods run on the server
+ * Produces items for farms in stasis and, after a restore, delivers their leftover buffer. The output chunks
+ * stay loaded for both. {@link #tick()} must be called once per server tick; all methods run on the server
  * thread.
  */
 public final class StasisEmulationService {
@@ -29,7 +33,7 @@ public final class StasisEmulationService {
         final MarkedFarm farm;
         final Set<ChunkPosition> chunks;
         long elapsed;
-        /** The creator was told the output is unavailable; reset by the next successful delivery. */
+        /** The creator was told an output is unavailable; reset by the next successful delivery. */
         boolean reportedLoss;
 
         Entry(MarkedFarm farm, Set<ChunkPosition> chunks) {
@@ -37,14 +41,20 @@ public final class StasisEmulationService {
             this.chunks = chunks;
         }
 
+        OutputContainer output(int index) {
+            return farm.outputs().get(index);
+        }
+
         ProfileEmulation.Output output(EmulationWorld world) {
-            return (type, amount) -> world.insert(farm.output(), type, amount);
+            return (index, type, amount) -> world.insert(output(index), type, amount);
         }
     }
 
     private static final class Running extends Entry {
         final ProfileEmulation emulation;
         boolean paused;
+        /** The creator was told production stopped because an output is full; reset when it resumes. */
+        boolean reportedFull;
 
         Running(MarkedFarm farm, Set<ChunkPosition> chunks, ProfileEmulation emulation) {
             super(farm, chunks);
@@ -53,12 +63,26 @@ public final class StasisEmulationService {
     }
 
     private static final class Draining extends Entry {
-        final Map<Material, Integer> buffer;
+        final List<Map<Material, Integer>> buffers = new ArrayList<>();
 
-        Draining(MarkedFarm farm, Set<ChunkPosition> chunks, Map<Material, Integer> buffer) {
+        Draining(MarkedFarm farm, Set<ChunkPosition> chunks, List<Map<Material, Integer>> buffers) {
             super(farm, chunks);
-            this.buffer = new EnumMap<>(Material.class);
-            this.buffer.putAll(buffer);
+            if (buffers.size() != farm.outputs().size()) {
+                throw new IllegalArgumentException("Остаток буфера не соответствует выходным контейнерам фермы.");
+            }
+            for (var buffer : buffers) {
+                var copy = new EnumMap<Material, Integer>(Material.class);
+                copy.putAll(buffer);
+                this.buffers.add(copy);
+            }
+        }
+
+        boolean empty() {
+            return buffers.stream().allMatch(Map::isEmpty);
+        }
+
+        List<Map<Material, Integer>> snapshot() {
+            return buffers.stream().map(Map::copyOf).toList();
         }
     }
 
@@ -70,7 +94,7 @@ public final class StasisEmulationService {
         this.store = Objects.requireNonNull(store, "store");
     }
 
-    /** Starts or continues production of a farm in stasis from {@code state}, keeping its output loaded. */
+    /** Starts or continues production of a farm in stasis from {@code state}, keeping its outputs loaded. */
     public void start(MarkedFarm farm, EmulationState state) {
         var emulation = new ProfileEmulation(farm.profile(), state);
         var chunks = outputChunks(farm);
@@ -92,38 +116,38 @@ public final class StasisEmulationService {
 
     /**
      * The original mechanism is back: production ends for good and fractions are discarded. A leftover buffer
-     * is saved apart from the profile and delivered as space appears in the output.
+     * is saved apart from the profile and delivered as space appears in the outputs.
      */
     public void finish(UUID farmId) {
         var farm = running.remove(farmId);
         if (farm == null) return;
-        var buffer = farm.emulation.buffer();
-        if (buffer.isEmpty()) {
+        if (!farm.emulation.paused()) {
             farm.chunks.forEach(tickets::release);
             return;
         }
-        store.saveDrain(farmId, buffer);
-        draining.put(farmId, new Draining(farm.farm, farm.chunks, buffer));
+        var buffers = farm.emulation.buffers();
+        store.saveDrain(farmId, buffers);
+        draining.put(farmId, new Draining(farm.farm, farm.chunks, buffers));
     }
 
-    /** Continues delivering a leftover buffer saved before a restart. */
-    public void drain(MarkedFarm farm, Map<Material, Integer> buffer) {
-        var chunks = outputChunks(farm);
-        tickets.acquireAll(chunks);
-        draining.put(farm.id(), new Draining(farm, chunks, buffer));
+    /** Continues delivering a leftover buffer saved before a restart, one buffer per output in order. */
+    public void drain(MarkedFarm farm, List<Map<Material, Integer>> buffers) {
+        var entry = new Draining(farm, outputChunks(farm), buffers);
+        tickets.acquireAll(entry.chunks);
+        draining.put(farm.id(), entry);
     }
 
     /**
-     * The farm's registration is removed: delivery of its leftover buffer stops and the output chunk is released.
-     * Its saved files are deleted with the registration. A farm in stasis is never removed, so production is not
-     * affected.
+     * The farm's registration is removed: delivery of its leftover buffer stops and the output chunks are
+     * released. Its saved files are deleted with the registration. A farm in stasis is never removed, so
+     * production is not affected.
      */
     public void stopDraining(UUID farmId) {
         var farm = draining.remove(farmId);
         if (farm != null) farm.chunks.forEach(tickets::release);
     }
 
-    /** True while a restored farm still has buffered items waiting for space in its output. */
+    /** True while a restored farm still has buffered items waiting for space in its outputs. */
     public boolean draining(UUID farmId) {
         return draining.containsKey(farmId);
     }
@@ -132,31 +156,51 @@ public final class StasisEmulationService {
         for (var farm : running.values().toArray(Running[]::new)) {
             if (farm.paused || ++farm.elapsed % settings.updateInterval() != 0) continue;
             var before = farm.emulation.state();
-            deliver(farm, () -> farm.emulation.update(settings.updateInterval(),
-                    farm.output(world)));
+            if (deliver(farm, () -> farm.emulation.update(settings.updateInterval(), farm.output(world)))) {
+                reportFull(farm);
+            }
             var after = farm.emulation.state();
-            // The output's own contents are saved with the world; this keeps both sides of each delivery.
+            // The outputs' own contents are saved with the world; this keeps both sides of each delivery.
             if (!after.equals(before)) store.saveEmulation(farm.farm.id(), after);
         }
         for (var farm : draining.values().toArray(Draining[]::new)) {
             if (++farm.elapsed % settings.updateInterval() != 0) continue;
-            var before = Map.copyOf(farm.buffer);
-            if (!deliver(farm, () -> ProfileEmulation.deliver(farm.buffer, farm.output(world)))) continue;
-            if (farm.buffer.isEmpty()) {
+            var before = farm.snapshot();
+            // Even a failed delivery may have served the other outputs.
+            deliver(farm, () -> ProfileEmulation.deliver(farm.buffers, farm.output(world)));
+            if (farm.empty()) {
                 store.deleteDrain(farm.farm.id());
                 draining.remove(farm.farm.id());
                 farm.chunks.forEach(tickets::release);
-            } else if (!farm.buffer.equals(before)) {
-                store.saveDrain(farm.farm.id(), farm.buffer);
+            } else if (!farm.snapshot().equals(before)) {
+                store.saveDrain(farm.farm.id(), farm.snapshot());
             }
         }
     }
 
+    /** Tells the creator once when a full output stops production of all outputs, and once when it resumes. */
+    private void reportFull(Running farm) {
+        var blocked = farm.emulation.blockedOutputs();
+        if (!blocked.isEmpty() && !farm.reportedFull) {
+            farm.reportedFull = true;
+            var outputs = blocked.stream()
+                    .map(index -> "№" + (index + 1) + " (" + farm.output(index).describe() + ")")
+                    .collect(Collectors.joining(", "));
+            world.notify(farm.farm.creatorId(), "Ферма " + farm.farm.title() + ": нет места в выходном контейнере "
+                    + outputs + ". Производство во все выходные контейнеры приостановлено; оно продолжится, когда во"
+                    + " всех выходных контейнерах найдётся место для уже произведённых предметов.");
+        } else if (blocked.isEmpty() && farm.reportedFull) {
+            farm.reportedFull = false;
+            world.notify(farm.farm.creatorId(), "Ферма " + farm.farm.title()
+                    + ": место в выходных контейнерах появилось, производство возобновлено.");
+        }
+    }
+
     /**
-     * Runs one delivery. A missing or rejecting output keeps every item: the buffer waits and production stays
-     * paused until the output accepts items again. The creator is told once per loss.
+     * Runs one delivery. A missing or rejecting output keeps its items: they wait and production stays paused
+     * until the output accepts items again. The creator is told once per loss.
      *
-     * @return whether the output accepted the delivery
+     * @return whether every output accepted the delivery
      */
     private boolean deliver(Entry farm, Runnable delivery) {
         try {
@@ -166,7 +210,7 @@ public final class StasisEmulationService {
         } catch (IllegalStateException | IllegalArgumentException error) {
             if (!farm.reportedLoss) {
                 farm.reportedLoss = true;
-                world.notify(farm.farm.creatorId(), "Выходной контейнер фермы " + farm.farm.id()
+                world.notify(farm.farm.creatorId(), "Выходной контейнер фермы " + farm.farm.title()
                         + " недоступен: " + error.getMessage() + " Буфер выработки сохранён и будет перенесён, когда"
                         + " контейнер снова примет предметы.");
             }
@@ -182,7 +226,7 @@ public final class StasisEmulationService {
         }
         running.clear();
         for (var farm : draining.values()) {
-            store.saveDrain(farm.farm.id(), farm.buffer);
+            store.saveDrain(farm.farm.id(), farm.snapshot());
             farm.chunks.forEach(tickets::release);
         }
         draining.clear();
@@ -190,7 +234,7 @@ public final class StasisEmulationService {
 
     private static Set<ChunkPosition> outputChunks(MarkedFarm farm) {
         var chunks = new LinkedHashSet<ChunkPosition>();
-        for (var block : farm.output().blocks()) chunks.add(ChunkPosition.of(block));
+        farm.outputBlocks().forEach(block -> chunks.add(ChunkPosition.of(block)));
         return chunks;
     }
 }

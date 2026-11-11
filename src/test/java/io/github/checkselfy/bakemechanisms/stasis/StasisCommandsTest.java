@@ -26,8 +26,8 @@ class StasisCommandsTest {
     @Test void routesStasisAndRestoreWithoutInterceptingProfilingCommands() {
         var player = player(creator);
         var id = farm().id();
-        commands.onCommand(player, command, "bake", new String[] { "stasis", id.toString() });
-        commands.onCommand(player, command, "bake", new String[] { "restore", id.toString() });
+        commands.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
+        commands.onCommand(player, command, "bake", new String[] { "restore", "--id", id.toString() });
         verify(service).enter(id, creator);
         verify(service).restore(id, creator);
         var profile = new String[] { "profile", id.toString() };
@@ -40,18 +40,22 @@ class StasisCommandsTest {
         var point = new BlockPosition(world, 0, 64, 0);
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(OutputContainer.Type.BARREL,
                 Set.of(new BlockPosition(world, 32, 64, 0))));
+        assertEquals(java.util.List.of("--id"), commands.onTabComplete(player(creator), command,
+                "bake", new String[] { "restore", "" }), "an unnamed farm is reached through --id");
         assertEquals(java.util.List.of(farm.id().toString()), commands.onTabComplete(player(creator), command,
-                "bake", new String[] { "restore", "" }));
-        assertTrue(commands.onTabComplete(player(UUID.randomUUID()), command, "bake", new String[] { "restore", "" }).isEmpty());
+                "bake", new String[] { "restore", "--id", "" }));
+        assertTrue(commands.onTabComplete(player(UUID.randomUUID()), command, "bake",
+                new String[] { "restore", "--id", "" }).isEmpty());
     }
 
     @Test void badUuidAndInvalidStateProduceReadableMessages() {
         var player = player(creator);
-        commands.onCommand(player, command, "bake", new String[] { "stasis", "bad" });
+        commands.onCommand(player, command, "bake", new String[] { "stasis", "--id", "bad" });
+        verify(player).sendMessage("Укажите UUID фермы из /bake list.");
         verifyNoInteractions(service);
         var id = farm().id();
         doThrow(new IllegalArgumentException("Стазис доступен только из READY.")).when(service).enter(id, creator);
-        commands.onCommand(player, command, "bake", new String[] { "stasis", id.toString() });
+        commands.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
         verify(player).sendMessage("Стазис доступен только из READY.");
     }
 
@@ -67,7 +71,7 @@ class StasisCommandsTest {
         var tasks = new java.util.ArrayDeque<Runnable>();
         var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
         doThrow(new PistonInMotionException()).doNothing().when(service).enter(id, creator);
-        var args = new String[] { "stasis", id.toString() };
+        var args = new String[] { "stasis", "--id", id.toString() };
         deferred.onCommand(player, command, "bake", args);
         assertEquals(1, tasks.size());
         deferred.onCommand(player, command, "bake", args);
@@ -84,7 +88,7 @@ class StasisCommandsTest {
         var tasks = new java.util.ArrayDeque<Runnable>();
         var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
         doThrow(new PistonInMotionException()).when(service).enter(id, creator);
-        var args = new String[] { "stasis", id.toString() };
+        var args = new String[] { "stasis", "--id", id.toString() };
         deferred.onCommand(player, command, "bake", args);
         int retries = 0;
         while (!tasks.isEmpty()) {
