@@ -45,6 +45,42 @@ class ProfilingServiceTest {
     }
 
     @Test
+    void initialHopperStockMovingToOutputIsNotProductionAndLooseItemsAreClearedOnce() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
+        var output = farm.outputs().getFirst();
+        world.sources = new ProfilingIsolation.Sources(Set.of(),Set.of(),Set.of(block(5,0,0)));
+        world.hopperContents.put(Material.SUGAR_CANE,320L);
+        world.contents.put(output,new OutputSnapshot(Map.of(Material.SUGAR_CANE,100),false));
+        service.start(farm.id(),creator);
+        assertEquals(List.of(farm.mechanism()),world.clearedLooseItems);
+        world.hopperContents.clear();
+        world.contents.put(output,new OutputSnapshot(Map.of(Material.SUGAR_CANE,420),false));
+        tick(1000); // Only movement of the initial stock: useful production has not started.
+        world.produce(output,Material.SUGAR_CANE,20);
+        tick(2600);
+        var done = registry.requireCreator(farm.id(),creator);
+        assertEquals(State.READY,done.state());
+        assertEquals(2580,done.profile().usefulTicks());
+        assertEquals(Map.of(Material.SUGAR_CANE,1.0),done.profile().ratesPer20Ticks());
+        assertEquals(1,world.clearedLooseItems.size());
+        assertTrue(world.tickets.isEmpty());
+    }
+
+    @Test
+    void losingATrackedHopperAbortsAndReleasesProtection() {
+        var farm = register(new Cuboid(block(0, 0, 0), block(5, 5, 5)), output(6));
+        world.sources = new ProfilingIsolation.Sources(Set.of(),Set.of(),Set.of(block(5,0,0)));
+        world.contents.put(farm.outputs().getFirst(),new OutputSnapshot(Map.of(),false));
+        service.start(farm.id(),creator);
+        world.missingHopper = true;
+        tick(20);
+        assertEquals(State.NEEDS_PROFILING,registry.requireCreator(farm.id(),creator).state());
+        assertTrue(service.isolations().isEmpty());
+        assertTrue(world.tickets.isEmpty());
+        assertTrue(world.messages.get(creator).getLast().contains("воронка"));
+    }
+
+    @Test
     void completedRunStoresProfileAndReleasesAllTickets() {
         // The two-block protection belt also acquires neighbouring chunks at the zero boundary.
         var farm = register(new Cuboid(block(0, 0, 0), block(20, 5, 5)), output(21));
@@ -149,6 +185,7 @@ class ProfilingServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.start(farm.id(), creator));
         assertTrue(world.tickets.isEmpty());
         assertTrue(world.locked.isEmpty());
+        assertTrue(world.clearedLooseItems.isEmpty(),"rejected startup must not delete loose items");
         assertEquals(State.NEEDS_PROFILING, registry.requireCreator(farm.id(), creator).state());
     }
 
@@ -341,6 +378,16 @@ class ProfilingServiceTest {
 
     /** In-memory world: tracks plugin tickets as a set, like Paper does for one plugin. */
     static final class FakeWorld implements ProfilingWorld {
+        ProfilingIsolation.Sources sources = ProfilingIsolation.Sources.empty();
+        final Map<Material,Long> hopperContents = new HashMap<>();
+        final List<Cuboid> clearedLooseItems = new ArrayList<>();
+        boolean missingHopper;
+        @Override public ProfilingIsolation.Sources validateIsolation(FarmRegistry.MarkedFarm farm) { return sources; }
+        @Override public Map<Material,Long> readHoppers(Set<BlockPosition> hoppers) {
+            if (missingHopper) throw new IllegalStateException("Внутренняя воронка потеряна.");
+            return Map.copyOf(hopperContents);
+        }
+        @Override public void removeLooseItems(Cuboid mechanism) { clearedLooseItems.add(mechanism); }
         final Map<OutputContainer, OutputSnapshot> contents = new HashMap<>();
         final Set<ChunkPosition> tickets = new HashSet<>();
         final Set<Cuboid> occupied = new HashSet<>();

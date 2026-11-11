@@ -12,8 +12,9 @@ import org.bukkit.Material;
 
 /** Session-owned transport policy: the mechanism produces; outputs are sinks; the surrounding belt only drains. */
 public final class ProfilingIsolation {
-    public record Sources(Set<UUID> actors, Set<Material> equipment) {
-        public Sources { actors = Set.copyOf(actors); equipment = Set.copyOf(equipment); }
+    public record Sources(Set<UUID> actors, Set<Material> equipment, Set<BlockPosition> hoppers) {
+        public Sources { actors = Set.copyOf(actors); equipment = Set.copyOf(equipment); hoppers = Set.copyOf(hoppers); }
+        public Sources(Set<UUID> actors, Set<Material> equipment) { this(actors, equipment, Set.of()); }
         public static Sources empty() { return new Sources(Set.of(), Set.of()); }
     }
     public static final int MARGIN = 2;
