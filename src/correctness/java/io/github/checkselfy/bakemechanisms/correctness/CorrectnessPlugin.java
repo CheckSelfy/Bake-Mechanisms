@@ -175,7 +175,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                     observeFirstProduction(blockFarm, blocks, Material.CACTUS);
                     observeFirstProduction(entityFarm, entities, Material.EGG);
                 }
-                if (elapsed == 100) {
+                if (elapsed == 100 || elapsed == 200) {
                     var sword = new ItemStack(Material.DIAMOND_SWORD);
                     var meta = (Damageable) sword.getItemMeta();
                     meta.setDamage(100);
@@ -275,7 +275,7 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 next(8);
             }
             case 8 -> {
-                if (elapsed == 100) {
+                if (elapsed == 100 || elapsed == 200) {
                     // Controlled positive output ensures this repeated-cycle test is independent of egg RNG.
                     output(blocks).addItem(new ItemStack(Material.CACTUS));
                     output(entities).addItem(new ItemStack(Material.EGG));
