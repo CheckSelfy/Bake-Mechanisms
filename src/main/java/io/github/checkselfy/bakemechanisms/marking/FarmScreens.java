@@ -1,9 +1,9 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
+import io.github.checkselfy.bakemechanisms.profiling.ProductionRate;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -255,7 +255,7 @@ public final class FarmScreens implements Listener {
             for (var output : farm.profile().outputs()) {
                 output.forEach((item, rate) -> rates.merge(item.getKey().getKey(), rate, Double::sum));
             }
-            rates.forEach((item, rate) -> lore.add(item + ": " + String.format(Locale.ROOT, "%.2f", rate) + " / 20 тиков"));
+            rates.forEach((item, rate) -> lore.add(item + ": " + ProductionRate.perTick(rate) + " / тик"));
         }
         return lore;
     }

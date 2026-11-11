@@ -1,5 +1,6 @@
 package io.github.checkselfy.bakemechanisms.marking;
 
+import io.github.checkselfy.bakemechanisms.profiling.ProductionRate;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingService;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingSettings;
 import java.util.ArrayList;
@@ -498,7 +499,7 @@ public final class MarkingController implements Listener, TabExecutor {
                 + farm.state() + " | " + coordinates(farm.mechanism().min()) + " → "
                 + coordinates(farm.mechanism().max()));
         if (farm.profile() != null) {
-            player.sendMessage("Профиль (предметов / 20 тиков, полезный участок " + farm.profile().usefulTicks()
+            player.sendMessage("Профиль (предметов / тик, полезный участок " + farm.profile().usefulTicks()
                     + " тиков):");
         }
         for (int i = 0; i < farm.outputs().size(); i++) {
@@ -510,7 +511,7 @@ public final class MarkingController implements Listener, TabExecutor {
                         .sorted(Map.Entry.comparingByKey())
                         .forEach(rate -> rates.append(rates.isEmpty() ? "" : ", ")
                                 .append(rate.getKey().getKey().getKey()).append(": ")
-                                .append(String.format(Locale.ROOT, "%.4f", rate.getValue())));
+                                .append(ProductionRate.perTick(rate.getValue())));
                 line.append(" | ").append(rates.isEmpty() ? "нет продукции" : rates);
             }
             player.sendMessage(line.toString());

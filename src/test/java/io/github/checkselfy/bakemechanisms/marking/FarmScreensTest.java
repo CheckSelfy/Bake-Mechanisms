@@ -153,6 +153,13 @@ class FarmScreensTest {
     }
 
     @Test
+    void productionIsShownInItemsPerTick() {
+        ready(farm(creator, "Cactus", 0));
+        screens.openList(player);
+        assertTrue(icon(slotOf("Cactus")).lore().contains("cactus: 0.05 / тик"), icon(slotOf("Cactus")).lore().toString());
+    }
+
+    @Test
     void stasisAndUnstasisRunTheirCommands() {
         var ready = ready(farm(creator, "Ready", 0));
         var stasis = ready(farm(creator, "Stasis", 1));
