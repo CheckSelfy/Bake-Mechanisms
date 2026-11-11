@@ -22,6 +22,16 @@ import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("deprecation")
 class PaperEntitySnapshotsTest {
+    @Test void allSpawnableLivingTypesExceptMultipartDragonHaveAnAuditedPolicy() {
+        for (var type : EntityType.values()) {
+            if (type.isAlive() && type.isSpawnable() && type != EntityType.ENDER_DRAGON) {
+                assertTrue(PaperEntitySnapshots.supportedTypes().contains(type), "Unreviewed living type: " + type);
+            }
+        }
+        assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.ENDER_DRAGON));
+        assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.PLAYER));
+        assertFalse(PaperEntitySnapshots.supportedTypes().contains(EntityType.ARROW));
+    }
     private final World world = mock(World.class);
     private final Server server = mock(Server.class);
     private final UnsafeValues serialization = mock(UnsafeValues.class);
@@ -46,6 +56,7 @@ class PaperEntitySnapshotsTest {
         when(passenger.getVehicle()).thenReturn(root);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(passenger, root));
         when(serialization.serializeEntity(root, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(root);
         var groups = snapshots.capture(world, region);
         assertEquals(1, groups.size());
         assertEquals(List.of(root.getUniqueId(), passenger.getUniqueId()), groups.getFirst().members());
@@ -56,7 +67,7 @@ class PaperEntitySnapshotsTest {
 
     @Test void unsupportedPassengerAndPlayerAreRejectedBeforeAnySerialization() {
         var root = entity(EntityType.MINECART);
-        var unsupported = entity(EntityType.CREEPER);
+        var unsupported = entity(EntityType.ARROW);
         when(root.getPassengers()).thenReturn(List.of(unsupported));
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(root));
         assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
@@ -110,13 +121,117 @@ class PaperEntitySnapshotsTest {
         order.verify(cart).remove();
     }
 
+    @Test void transientTargetPoseCollisionRulesAndPickupPolicyAreRejectedBeforeSerialization() {
+        var mob = mock(org.bukkit.entity.Zombie.class);
+        initialize(mob, EntityType.ZOMBIE);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(mob));
+        when(mob.getTarget()).thenReturn(mock(org.bukkit.entity.Cow.class));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(mob.getTarget()).thenReturn(null);
+        when(mob.hasFixedPose()).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(mob.hasFixedPose()).thenReturn(false);
+        when(mob.getCollidableExemptions()).thenReturn(java.util.Set.of(UUID.randomUUID()));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        var item = mock(org.bukkit.entity.Item.class);
+        initialize(item, EntityType.ITEM);
+        when(item.canMobPickup()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(item));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+        verify(mob, never()).remove();
+        verify(item, never()).remove();
+    }
+
+    @Test void unsavedCartSettingsAreRejectedUsingDetachedNativeDefaults() {
+        var cart = mock(org.bukkit.entity.Minecart.class);
+        initialize(cart, EntityType.MINECART);
+        var copy = mock(org.bukkit.entity.Minecart.class);
+        initialize(copy, EntityType.MINECART);
+        var cartId = cart.getUniqueId();
+        when(copy.getUniqueId()).thenReturn(cartId);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cart));
+        when(serialization.serializeEntity(cart, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(copy);
+        var defaults = new org.bukkit.util.Vector(0.95, 0.95, 0.95);
+        when(cart.getFlyingVelocityMod()).thenReturn(defaults);
+        when(copy.getFlyingVelocityMod()).thenReturn(defaults);
+        when(cart.getDerailedVelocityMod()).thenReturn(defaults);
+        when(copy.getDerailedVelocityMod()).thenReturn(defaults);
+        when(cart.getMaxSpeed()).thenReturn(0.8);
+        when(copy.getMaxSpeed()).thenReturn(0.4);
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(cart.getMaxSpeed()).thenReturn(0.4);
+        when(cart.getDamage()).thenReturn(2.0);
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(cart.getDamage()).thenReturn(0.0);
+        assertEquals(1, snapshots.capture(world, region).size());
+        verify(cart, never()).remove();
+        verify(copy, never()).spawnAt(any(), any());
+    }
+
+    @Test void leashedNonPersistentAndOpenInventoryEntitiesAreRejectedBeforeSerialization() {
+        var cow = mock(org.bukkit.entity.Cow.class);
+        initialize(cow, EntityType.COW);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
+        when(cow.isLeashed()).thenReturn(true);
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(cow.isLeashed()).thenReturn(false);
+        when(cow.isPersistent()).thenReturn(false);
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        var cart = mock(org.bukkit.entity.minecart.StorageMinecart.class);
+        initialize(cart, EntityType.CHEST_MINECART);
+        var inventory = mock(org.bukkit.inventory.Inventory.class);
+        when(cart.getInventory()).thenReturn(inventory);
+        when(inventory.getViewers()).thenReturn(List.of(mock(Player.class)));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cart));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void externalCreakingHeartAndActiveCopperGolemAreRejectedWithoutSerializing() {
+        var creaking = mock(org.bukkit.entity.Creaking.class);
+        initialize(creaking, EntityType.CREAKING);
+        when(creaking.getHome()).thenReturn(new org.bukkit.Location(world, 10, 64, 0));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(creaking));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        var copper = mock(org.bukkit.entity.CopperGolem.class);
+        initialize(copper, EntityType.COPPER_GOLEM);
+        when(copper.getGolemState()).thenReturn(org.bukkit.entity.CopperGolem.State.GETTING_ITEM);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(copper));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void inconsistentTamingIsRejectedBeforeTheOriginalIsRemoved() {
+        var wolf = mock(org.bukkit.entity.Wolf.class);
+        initialize(wolf, EntityType.WOLF);
+        var restored = mock(org.bukkit.entity.Wolf.class);
+        initialize(restored, EntityType.WOLF);
+        var id = wolf.getUniqueId();
+        when(restored.getUniqueId()).thenReturn(id);
+        when(wolf.isTamed()).thenReturn(true);
+        when(restored.isTamed()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(wolf));
+        when(serialization.serializeEntity(wolf, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(restored);
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        verify(wolf, never()).remove();
+        verify(restored, never()).spawnAt(any(), any());
+    }
+
     private Entity entity(EntityType type) {
         var entity = mock(Entity.class);
+        initialize(entity, type);
+        return entity;
+    }
+
+    private void initialize(Entity entity, EntityType type) {
         when(entity.getUniqueId()).thenReturn(UUID.randomUUID());
         when(entity.getType()).thenReturn(type);
         when(entity.isValid()).thenReturn(true);
         when(entity.isPersistent()).thenReturn(true);
         when(entity.getBoundingBox()).thenReturn(new BoundingBox(0, 64, 0, 0.8, 65, 0.8));
-        return entity;
+        when(entity.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
     }
 }

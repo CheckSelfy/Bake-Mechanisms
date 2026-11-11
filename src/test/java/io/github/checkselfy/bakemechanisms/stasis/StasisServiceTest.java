@@ -109,6 +109,23 @@ class StasisServiceTest {
     }
 
     @Test
+    void restoreIdentityConflictDoesNotPauseProductionOrRemoveExistingEntities() {
+        var farm = ready();
+        var production = mock(StasisProduction.class);
+        var guarded = new StasisService(registry, world, store, production);
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        guarded.enter(farm.id(), creator);
+        clearInvocations(world, store, production);
+        doThrow(new IllegalArgumentException("UUID conflict")).when(world).validateRestore(any(), any());
+        assertThrows(IllegalArgumentException.class, () -> guarded.restore(farm.id(), creator));
+        verify(world, never()).restore(any(), any());
+        verify(world, never()).removeEntities(any(), any());
+        verify(world, never()).fill(any());
+        verifyNoInteractions(production, store);
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
     void onlyReadyCanEnterAndRepeatedEntryNeverOverwritesSnapshot() {
         var farm = ready();
         when(world.capture(farm)).thenReturn(new byte[] { 1 });

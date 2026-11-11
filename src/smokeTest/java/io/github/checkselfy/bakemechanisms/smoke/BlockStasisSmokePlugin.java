@@ -33,6 +33,12 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
     @Override public void onEnable() {
         getServer().getScheduler().runTask(this, () -> {
             try {
+                var auditPhase = System.getProperty("bake.entity-nbt.phase");
+                if (auditPhase != null) {
+                    try { EntityNbtCheck.run(this, auditPhase); }
+                    finally { getServer().shutdown(); }
+                    return;
+                }
                 checkSnapshots();
                 getLogger().info("BLOCK_STASIS_SMOKE_PASSED");
                 MovingPistonCheck.run(this, error -> {
@@ -146,7 +152,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         expectRefused(() -> service.enter(farm.id(), creator));
         check(world.getBlockAt(0, 301, 0).getType() == Material.COMMAND_BLOCK, "unsupported tile was replaced");
         world.getBlockAt(0, 301, 0).setType(Material.AIR, false);
-        var entity = world.spawnEntity(new Location(world, 2.5, 301, 2.5), EntityType.CREEPER);
+        var entity = world.spawnEntity(new Location(world, 2.5, 301, 2.5), EntityType.END_CRYSTAL);
         expectRefused(() -> service.enter(farm.id(), creator));
         check(entity.isValid(), "unsupported entity was removed");
         entity.remove();

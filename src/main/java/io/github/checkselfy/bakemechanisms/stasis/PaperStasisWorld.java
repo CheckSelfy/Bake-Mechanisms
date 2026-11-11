@@ -132,7 +132,17 @@ public final class PaperStasisWorld implements StasisWorld {
         eachBlock(world, mechanism, block -> block.setType(Material.BEDROCK, false));
     }
 
+    @Override public void validateRestore(MarkedFarm farm, byte[] data) {
+        for (var group : SnapshotPayload.decode(data).groups()) for (var id : group.members()) {
+            if (plugin.getServer().getEntity(id) != null) {
+                throw new IllegalArgumentException("Восстановление не начато: UUID сущности " + id
+                        + " уже существует в мире. Устраните конфликт перед повторной командой.");
+            }
+        }
+    }
+
     @Override public void restore(MarkedFarm farm, byte[] data) {
+        validateRestore(farm, data);
         var region = farm.mechanism();
         var world = world(region);
         loadChunks(world, region);
