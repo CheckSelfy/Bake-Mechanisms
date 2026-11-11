@@ -37,6 +37,12 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
     @Override public void onEnable() {
         getServer().getScheduler().runTask(this, () -> {
             try {
+                var auditPhase = System.getProperty("bake.entity-nbt.phase");
+                if (auditPhase != null) {
+                    try { EntityNbtCheck.run(this, auditPhase); }
+                    finally { getServer().shutdown(); }
+                    return;
+                }
                 checkSnapshots();
                 getLogger().info("BLOCK_STASIS_SMOKE_PASSED");
                 MovingPistonCheck.run(this, error -> {
@@ -49,8 +55,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                             getLogger().info("FRAGILE_BLOCK_STASIS_SMOKE_PASSED: mature wheat retained after placement and subsequent ticks");
                         } catch (Throwable failure) { error = failure; }
                     }
-                    if (error != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
-                    getServer().shutdown();
+                    if (error != null) {
+                        getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
+                        getServer().shutdown();
+                    } else MobBehaviorCheck.run(this, behaviorError -> {
+                        if (behaviorError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", behaviorError);
+                        getServer().shutdown();
+                    });
                 });
             } catch (Throwable error) {
                 getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
@@ -174,7 +185,7 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
         expectRefused(() -> service.enter(farm.id(), creator));
         check(world.getBlockAt(0, 301, 0).getType() == Material.COMMAND_BLOCK, "unsupported tile was replaced");
         world.getBlockAt(0, 301, 0).setType(Material.AIR, false);
-        var entity = world.spawnEntity(new Location(world, 2.5, 301, 2.5), EntityType.CREEPER);
+        var entity = world.spawnEntity(new Location(world, 2.5, 301, 2.5), EntityType.END_CRYSTAL);
         expectRefused(() -> service.enter(farm.id(), creator));
         check(entity.isValid(), "unsupported entity was removed");
         entity.remove();

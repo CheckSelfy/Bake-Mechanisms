@@ -239,8 +239,20 @@ tasks.register<JavaExec>("stasisSmoke") {
         tasks.jar.get().archiveFile.get().asFile.copyTo(smokeDir.resolve("plugins/bake-mechanisms.jar"), overwrite = true)
         stasisSmokeJar.get().archiveFile.get().asFile.copyTo(smokeDir.resolve("plugins/bake-stasis-smoke.jar"), overwrite = true)
         smokeDir.resolve("server.properties").writeText(
-            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\n"
+            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\npause-when-empty-seconds=-1\n"
         )
+        smokeDir.resolve("spigot.yml").writeText("""
+            world-settings:
+              default:
+                entity-activation-range:
+                  animals: 0
+                  monsters: 0
+                  villagers: 0
+                  raiders: 0
+                  water: 0
+                  flying-monsters: 0
+                  misc: 0
+        """.trimIndent())
         Files.deleteIfExists(smokeDir.resolve("logs/latest.log").toPath())
     }
     doLast {
@@ -252,8 +264,60 @@ tasks.register<JavaExec>("stasisSmoke") {
             || !log.contains("SIGN_STASIS_SMOKE_PASSED")
             || !log.contains("EXTENDED_BLOCK_STASIS_SMOKE_PASSED")
             || !log.contains("MOVING_PISTON_STASIS_SMOKE_PASSED")
+            || !log.contains("MOB_BEHAVIOR_SMOKE_PASSED")
             || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
             throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
+        }
+    }
+}
+
+// Two JVMs with a clean shutdown between them: no in-memory entity objects can reach restore.
+val entityNbtDir = layout.projectDirectory.dir("run/entity-nbt-smoke").asFile
+val entityNbtCapture = tasks.register<JavaExec>("entityNbtCapture") {
+    group = "verification"
+    description = "Captures all audited living/entity types and shuts down a disposable Paper server."
+    dependsOn("setupServer", tasks.jar, stasisSmokeJar)
+    workingDir = entityNbtDir
+    classpath = files(entityNbtDir.resolve("paper.jar"))
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Dbake.entity-nbt.phase=capture", "-Xms512M", "-Xmx1G")
+    args("nogui")
+    doFirst {
+        entityNbtDir.resolve("plugins").mkdirs()
+        entityNbtDir.resolve("cache").mkdirs()
+        layout.projectDirectory.file("server/paper.jar").asFile.copyTo(entityNbtDir.resolve("paper.jar"), overwrite = true)
+        layout.projectDirectory.file("server/cache/mojang_26.3.jar").asFile
+            .copyTo(entityNbtDir.resolve("cache/mojang_26.3.jar"), overwrite = true)
+        layout.projectDirectory.file("server/eula.txt").asFile.copyTo(entityNbtDir.resolve("eula.txt"), overwrite = true)
+        tasks.jar.get().archiveFile.get().asFile.copyTo(entityNbtDir.resolve("plugins/bake-mechanisms.jar"), overwrite = true)
+        stasisSmokeJar.get().archiveFile.get().asFile.copyTo(entityNbtDir.resolve("plugins/bake-stasis-smoke.jar"), overwrite = true)
+        entityNbtDir.resolve("server.properties").writeText(
+            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\n"
+        )
+        Files.deleteIfExists(entityNbtDir.resolve("logs/latest.log").toPath())
+    }
+    doLast {
+        val log = entityNbtDir.resolve("logs/latest.log").readText()
+        if (!log.contains("ENTITY_NBT_CAPTURE_PASSED") || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Entity NBT capture failed. See run/entity-nbt-smoke/logs/latest.log")
+        }
+        entityNbtDir.resolve("logs/entity-capture.log").writeText(log)
+    }
+}
+
+tasks.register<JavaExec>("entityNbtSmoke") {
+    group = "verification"
+    description = "Restarts Paper after entityNbtCapture and checks entity NBT, UUIDs and passenger trees."
+    dependsOn(entityNbtCapture)
+    workingDir = entityNbtDir
+    classpath = files(entityNbtDir.resolve("paper.jar"))
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Dbake.entity-nbt.phase=restore", "-Xms512M", "-Xmx1G")
+    args("nogui")
+    doLast {
+        val log = entityNbtDir.resolve("logs/latest.log").readText()
+        if (!log.contains("ENTITY_NBT_RESTART_PASSED") || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Entity NBT restart check failed. See run/entity-nbt-smoke/logs/latest.log")
         }
     }
 }

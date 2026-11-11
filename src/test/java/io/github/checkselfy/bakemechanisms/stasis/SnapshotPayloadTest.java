@@ -8,6 +8,32 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class SnapshotPayloadTest {
+    @Test void targetsAcrossGroupsAndExternalReferencesRoundTrip() {
+        var mob = UUID.randomUUID();
+        var target = UUID.randomUUID();
+        var payload = new SnapshotPayload(new byte[] { 1 }, List.of(
+                new SnapshotPayload.EntityGroup(mob, List.of(mob), new byte[] { 2 }, java.util.Map.of(mob, target))));
+        assertEquals(java.util.Map.of(mob, target), SnapshotPayload.decode(payload.encode()).groups().getFirst().targets());
+        assertThrows(IllegalArgumentException.class, () -> new SnapshotPayload.EntityGroup(mob, List.of(mob),
+                new byte[] { 2 }, java.util.Map.of(UUID.randomUUID(), target)));
+    }
+
+    @Test void versionTwoWithEntitiesAndVoidBlocksRemainsReadable() throws Exception {
+        var id = UUID.randomUUID();
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var out = new java.io.DataOutputStream(bytes)) {
+            out.writeInt(0x42414B45); out.writeInt(2);
+            out.writeInt(1); out.writeByte(42);
+            out.writeInt(1);
+            out.writeLong(id.getMostSignificantBits()); out.writeLong(id.getLeastSignificantBits());
+            out.writeInt(1); out.writeLong(id.getMostSignificantBits()); out.writeLong(id.getLeastSignificantBits());
+            out.writeInt(1); out.writeByte(11);
+            out.writeInt(1); out.writeInt(1); out.writeInt(2); out.writeInt(3);
+        }
+        var decoded = SnapshotPayload.decode(bytes.toByteArray());
+        assertTrue(decoded.groups().getFirst().targets().isEmpty());
+        assertEquals(List.of(new SnapshotPayload.VoidBlock(1, 2, 3)), decoded.voidBlocks());
+    }
     @Test void envelopeRoundTripsBlocksAndWholeEntityGroups() {
         var root = UUID.randomUUID();
         var child = UUID.randomUUID();

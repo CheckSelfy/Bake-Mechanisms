@@ -28,7 +28,6 @@ import org.bukkit.loot.Lootable;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BlockVector;
-import org.bukkit.util.BlockTransformer;
 
 /** Native structure serialization preserves block data, tile NBT and item components without NMS. */
 public final class PaperStasisWorld implements StasisWorld {
@@ -134,7 +133,17 @@ public final class PaperStasisWorld implements StasisWorld {
         eachBlock(world, mechanism, block -> block.setType(Material.BEDROCK, false));
     }
 
+    @Override public void validateRestore(MarkedFarm farm, byte[] data) {
+        for (var group : SnapshotPayload.decode(data).groups()) for (var id : group.members()) {
+            if (plugin.getServer().getEntity(id) != null) {
+                throw new IllegalArgumentException("Восстановление не начато: UUID сущности " + id
+                        + " уже существует в мире. Устраните конфликт перед повторной командой.");
+            }
+        }
+    }
+
     @Override public void restore(MarkedFarm farm, byte[] data) {
+        validateRestore(farm, data);
         var region = farm.mechanism();
         var world = world(region);
         loadChunks(world, region);
@@ -154,18 +163,17 @@ public final class PaperStasisWorld implements StasisWorld {
                 }
             }
             if (structure.getPaletteCount() > 0) {
-                // Growth blocks can break and drop copies if native placement checks them
-                // before the full support/light geometry is restored. Place them only below,
-                // after native blocks and tile NBT are complete, without generating drops.
-                BlockTransformer deferGrowth = (regionAccess, x, y, z, state, context) -> {
-                    if (!(state.getBlockData() instanceof Ageable)) return state;
-                    var empty = state.copy();
-                    empty.setType(Material.AIR);
-                    return empty;
-                };
+                // Paper's transformer accessor is limited to the anchor chunk and its neighbours.
+                // Prepare the complete plain support geometry first, then crops, without physics.
+                // Native placement sees their final states and still owns all tile NBT.
+                var savedBlocks = structure.getPalettes().getFirst().getBlocks();
+                for (boolean growth : new boolean[] { false, true }) for (var saved : savedBlocks) {
+                    if (saved instanceof TileState || (saved.getBlockData() instanceof Ageable) != growth) continue;
+                    world.getBlockAt(min.x() + saved.getX(), min.y() + saved.getY(), min.z() + saved.getZ())
+                            .setBlockData(saved.getBlockData(), false);
+                }
                 structure.place(new Location(world, min.x(), min.y(), min.z()), false,
-                        StructureRotation.NONE, Mirror.NONE, 0, 1.0f, new Random(0),
-                        java.util.List.of(deferGrowth), java.util.List.of());
+                        StructureRotation.NONE, Mirror.NONE, 0, 1.0f, new Random(0));
                 // Native placement can reject support-dependent blocks while the rest of the
                 // template is still filler (e.g. mature wheat above farmland becomes air).
                 // Once the complete support geometry is back, enforce the saved plain block
@@ -184,6 +192,7 @@ public final class PaperStasisWorld implements StasisWorld {
                         .setType(Material.STRUCTURE_VOID, false);
             }
             entities.spawn(restoredEntities);
+            entities.restoreTargets(restoredEntities, payload.groups());
         } catch (IOException error) {
             throw new IllegalStateException("Не удалось прочитать снимок.", error);
         }

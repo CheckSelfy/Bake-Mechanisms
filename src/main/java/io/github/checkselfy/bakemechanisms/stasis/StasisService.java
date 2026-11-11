@@ -90,6 +90,7 @@ public final class StasisService {
             throw new IllegalArgumentException("Ферма не находится в стазисе.");
         }
         requireNoPlayers(farm);
+        world.validateRestore(farm, snapshot.data());
         production.pause(farmId);
         try {
             world.restore(farm, snapshot.data());

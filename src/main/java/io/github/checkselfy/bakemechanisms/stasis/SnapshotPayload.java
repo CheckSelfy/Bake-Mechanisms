@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 /** Versioned envelope around native structure NBT and native entity NBT, never parsed as NMS. */
 public record SnapshotPayload(byte[] blocks, List<EntityGroup> groups, List<VoidBlock> voidBlocks) {
@@ -21,12 +22,15 @@ public record SnapshotPayload(byte[] blocks, List<EntityGroup> groups, List<Void
 
     public SnapshotPayload(byte[] blocks, List<EntityGroup> groups) { this(blocks, groups, List.of()); }
 
-    public record EntityGroup(UUID rootId, List<UUID> members, byte[] data) {
+    public record EntityGroup(UUID rootId, List<UUID> members, byte[] data, Map<UUID, UUID> targets) {
+        public EntityGroup(UUID rootId, List<UUID> members, byte[] data) { this(rootId, members, data, Map.of()); }
         public EntityGroup {
             members = List.copyOf(members);
             data = data.clone();
+            targets = Map.copyOf(targets);
             if (members.isEmpty() || !members.contains(rootId) || members.stream().distinct().count() != members.size()
                     || data.length == 0) throw new IllegalArgumentException("Некорректная группа сущностей.");
+            if (!members.containsAll(targets.keySet())) throw new IllegalArgumentException("Источник цели не входит в группу сущностей.");
         }
         @Override public byte[] data() { return data.clone(); }
     }
@@ -48,7 +52,7 @@ public record SnapshotPayload(byte[] blocks, List<EntityGroup> groups, List<Void
     public byte[] encode() {
         try (var bytes = new ByteArrayOutputStream(); var out = new DataOutputStream(bytes)) {
             out.writeInt(MAGIC);
-            out.writeInt(2);
+            out.writeInt(3);
             writeBytes(out, blocks);
             out.writeInt(groups.size());
             for (var group : groups) {
@@ -56,6 +60,11 @@ public record SnapshotPayload(byte[] blocks, List<EntityGroup> groups, List<Void
                 out.writeInt(group.members().size());
                 for (var id : group.members()) writeId(out, id);
                 writeBytes(out, group.data());
+                out.writeInt(group.targets().size());
+                for (var target : new java.util.TreeMap<>(group.targets()).entrySet()) {
+                    writeId(out, target.getKey());
+                    writeId(out, target.getValue());
+                }
             }
             out.writeInt(voidBlocks.size());
             for (var block : voidBlocks) {
@@ -74,7 +83,7 @@ public record SnapshotPayload(byte[] blocks, List<EntityGroup> groups, List<Void
             // Compatibility with the structure-only snapshots created by #5.
             if (data.length < 4 || input.readInt() != MAGIC) return new SnapshotPayload(data, List.of());
             int version = input.readInt();
-            if (version != 1 && version != 2) throw new IOException("Неизвестная версия снимка.");
+            if (version < 1 || version > 3) throw new IOException("Неизвестная версия снимка.");
             var blocks = readBytes(input);
             int count = count(input, 1);
             var groups = new ArrayList<EntityGroup>();
@@ -83,7 +92,15 @@ public record SnapshotPayload(byte[] blocks, List<EntityGroup> groups, List<Void
                 int size = count(input, 16);
                 var members = new ArrayList<UUID>();
                 for (int j = 0; j < size; j++) members.add(readId(input));
-                groups.add(new EntityGroup(root, members, readBytes(input)));
+                var bytes = readBytes(input);
+                var targets = new java.util.LinkedHashMap<UUID, UUID>();
+                if (version >= 3) {
+                    int sizeTargets = count(input, 32);
+                    for (int j = 0; j < sizeTargets; j++) {
+                        if (targets.put(readId(input), readId(input)) != null) throw new IOException("Повтор источника цели.");
+                    }
+                }
+                groups.add(new EntityGroup(root, members, bytes, targets));
             }
             var voidBlocks = new ArrayList<VoidBlock>();
             if (version >= 2) {
