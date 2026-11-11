@@ -50,7 +50,7 @@ public final class FarmRemoval {
         var farm = registry.requireCreator(farmId, actorId);
         var request = requests.get(actorId);
         if (request == null || !request.farmId().equals(farmId) || clockMillis.getAsLong() > request.expiresAt()) {
-            throw new IllegalArgumentException("Сначала запросите удаление: /bake delete " + farm.reference()
+            throw new IllegalArgumentException("Сначала запросите удаление: /bake unregister " + farm.reference()
                     + ". Подтверждение действует " + CONFIRMATION_SECONDS + " секунд.");
         }
         requireRemovable(farmId, actorId);
@@ -69,9 +69,9 @@ public final class FarmRemoval {
         var farm = registry.requireCreator(farmId, actorId);
         switch (farm.state()) {
             case STASIS -> throw new IllegalArgumentException(
-                    "Ферма в стазисе: сначала восстановите механизм (/bake restore " + farm.reference() + ").");
+                    "Ферма в стазисе: сначала восстановите механизм (/bake unstasis " + farm.reference() + ").");
             case PROFILING -> throw new IllegalArgumentException(
-                    "Идёт профилирование: сначала отмените его (/bake cancel " + farm.reference() + ").");
+                    "Идёт профилирование: сначала отмените его (/bake cancel-profiling " + farm.reference() + ").");
             case NEEDS_PROFILING, READY -> { }
         }
         return farm;

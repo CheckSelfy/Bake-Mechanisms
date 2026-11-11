@@ -23,16 +23,27 @@ class StasisCommandsTest {
     private final StasisCommands commands = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger());
     private final Command command = mock(Command.class);
 
-    @Test void routesStasisAndRestoreWithoutInterceptingProfilingCommands() {
+    @Test void routesStasisAndUnstasisWithoutInterceptingProfilingCommands() {
         var player = player(creator);
         var id = farm().id();
         commands.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
-        commands.onCommand(player, command, "bake", new String[] { "restore", "--id", id.toString() });
+        commands.onCommand(player, command, "bake", new String[] { "unstasis", "--id", id.toString() });
         verify(service).enter(id, creator);
         verify(service).restore(id, creator);
         var profile = new String[] { "profile", id.toString() };
         commands.onCommand(player, command, "bake", profile);
         verify(delegate).onCommand(player, command, "bake", profile);
+    }
+
+    @Test void oldRestoreNameIsLeftToTheOtherCommandsAndNotCompleted() {
+        var player = player(creator);
+        var restore = new String[] { "restore", "--id", farm().id().toString() };
+        commands.onCommand(player, command, "bake", restore);
+        verify(delegate).onCommand(player, command, "bake", restore);
+        verifyNoInteractions(service);
+        assertEquals(java.util.List.of("unstasis"),
+                commands.onTabComplete(player, command, "bake", new String[] { "uns" }));
+        assertTrue(commands.onTabComplete(player, command, "bake", new String[] { "res" }).isEmpty());
     }
 
     @Test void onlyCreatorsFarmIdsAppearInCompletions() {
@@ -41,11 +52,11 @@ class StasisCommandsTest {
         var farm = registry.register(creator, new Cuboid(point, point), new OutputContainer(OutputContainer.Type.BARREL,
                 Set.of(new BlockPosition(world, 1, 64, 0))));
         assertEquals(java.util.List.of("--id"), commands.onTabComplete(player(creator), command,
-                "bake", new String[] { "restore", "" }), "an unnamed farm is reached through --id");
+                "bake", new String[] { "unstasis", "" }), "an unnamed farm is reached through --id");
         assertEquals(java.util.List.of(farm.id().toString()), commands.onTabComplete(player(creator), command,
-                "bake", new String[] { "restore", "--id", "" }));
+                "bake", new String[] { "unstasis", "--id", "" }));
         assertTrue(commands.onTabComplete(player(UUID.randomUUID()), command, "bake",
-                new String[] { "restore", "--id", "" }).isEmpty());
+                new String[] { "unstasis", "--id", "" }).isEmpty());
     }
 
     @Test void badUuidAndInvalidStateProduceReadableMessages() {

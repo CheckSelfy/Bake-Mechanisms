@@ -40,7 +40,7 @@ public final class StasisCommands implements TabExecutor {
     }
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length == 0) sender.sendMessage("/bake stasis " + FarmArguments.USAGE + " | restore " + FarmArguments.USAGE);
+        if (args.length == 0) sender.sendMessage("/bake stasis " + FarmArguments.USAGE + " | unstasis " + FarmArguments.USAGE);
         if (args.length == 0 || !isStasisCommand(args[0])) {
             return otherCommands.onCommand(sender, command, label, args);
         }
@@ -102,7 +102,7 @@ public final class StasisCommands implements TabExecutor {
             var result = new ArrayList<String>();
             var others = otherCommands.onTabComplete(sender, command, alias, args);
             if (others != null) result.addAll(others);
-            for (var operation : List.of("stasis", "restore")) {
+            for (var operation : List.of("stasis", "unstasis")) {
                 if (operation.startsWith(args[0].toLowerCase(Locale.ROOT))) result.add(operation);
             }
             return List.copyOf(result);
@@ -115,6 +115,6 @@ public final class StasisCommands implements TabExecutor {
     }
 
     private static boolean isStasisCommand(String value) {
-        return value.equalsIgnoreCase("stasis") || value.equalsIgnoreCase("restore");
+        return value.equalsIgnoreCase("stasis") || value.equalsIgnoreCase("unstasis");
     }
 }

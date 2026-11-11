@@ -31,14 +31,21 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 /** Command and wand boundary. All callbacks run on the server thread. */
 public final class MarkingController implements Listener, TabExecutor {
-    private static final List<String> COMMANDS = List.of("wand", "output", "register", "list", "info", "rename",
-            "profile", "profile-long", "sprint", "cancel", "delete", "clear");
-    private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "profile-long", "sprint", "cancel",
-            "delete");
+    private static final List<String> COMMANDS = List.of("wand", "select-output", "unselect", "register", "list",
+            "info", "rename", "profile", "profile-long", "sprint", "cancel-profiling", "unregister");
+    private static final List<String> FARM_COMMANDS = List.of("info", "rename", "profile", "profile-long", "sprint",
+            "cancel-profiling", "unregister");
+    /**
+     * Former names of renamed commands. They are not aliases: each answers with its new name and does nothing, so
+     * an old habit never silently runs a different operation.
+     */
+    static final Map<String, String> RENAMED = Map.of("output", "select-output", "clear", "unselect",
+            "cancel", "cancel-profiling", "restore", "unstasis", "delete", "unregister");
     private static final String FARM_USAGE = FarmArguments.USAGE;
-    private static final String HELP = "/bake wand | output | register [имя] | list | info " + FARM_USAGE
-            + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | profile-long " + FARM_USAGE + " | sprint " + FARM_USAGE
-            + " (ускоряет весь сервер) | cancel " + FARM_USAGE + " | delete " + FARM_USAGE + " [confirm] | clear";
+    private static final String HELP = "/bake wand | select-output | unselect | register [имя] | list | info "
+            + FARM_USAGE + " | rename " + FARM_USAGE + " <имя> | profile " + FARM_USAGE + " | profile-long " + FARM_USAGE + " | sprint " + FARM_USAGE
+            + " (ускоряет весь сервер) | cancel-profiling " + FARM_USAGE + " | stasis " + FARM_USAGE + " | unstasis "
+            + FARM_USAGE + " | unregister " + FARM_USAGE + " [confirm]";
     private static final String CONFIRM = "confirm";
     /** Permission of the vanilla {@code /tick} command; {@code /bake sprint} needs it too. */
     static final String TICK_PERMISSION = "minecraft.command.tick";
@@ -84,7 +91,7 @@ public final class MarkingController implements Listener, TabExecutor {
                     requireArguments(args, 1);
                     giveWand(player);
                 }
-                case "output" -> {
+                case "select-output" -> {
                     requireArguments(args, 1);
                     Block block = player.getTargetBlockExact(6);
                     if (block == null) throw new IllegalArgumentException("Посмотрите на выходной контейнер в пределах 6 блоков.");
@@ -119,14 +126,14 @@ public final class MarkingController implements Listener, TabExecutor {
                     requireTickPermission(player);
                     sprint(player, farm(player, args, "/bake sprint " + FARM_USAGE).farm());
                 }
-                case "cancel" -> {
-                    var farm = farm(player, args, "/bake cancel " + FARM_USAGE).farm();
+                case "cancel-profiling" -> {
+                    var farm = farm(player, args, "/bake cancel-profiling " + FARM_USAGE).farm();
                     profiling.cancel(farm.id(), actor);
                     player.sendMessage("Профилирование отменено, механизм не изменён.");
                     show(player, registry.requireCreator(farm.id(), actor));
                 }
-                case "delete" -> {
-                    var usage = "/bake delete " + FARM_USAGE + " [" + CONFIRM + "]";
+                case "unregister" -> {
+                    var usage = "/bake unregister " + FARM_USAGE + " [" + CONFIRM + "]";
                     var target = farm(player, args, usage, -1);
                     var farm = target.farm();
                     if (target.rest().size() == 1 && target.rest().getFirst().equalsIgnoreCase(CONFIRM)) {
@@ -137,18 +144,23 @@ public final class MarkingController implements Listener, TabExecutor {
                         show(player, removal.request(farm.id(), actor));
                         player.sendMessage("Удалить регистрацию, профиль и сохранённые данные фермы? Механизм в мире"
                                 + " не изменится; неперенесённый остаток буфера выработки будет потерян. Подтвердите в"
-                                + " течение " + FarmRemoval.CONFIRMATION_SECONDS + " секунд: /bake delete "
+                                + " течение " + FarmRemoval.CONFIRMATION_SECONDS + " секунд: /bake unregister "
                                 + farm.reference() + " " + CONFIRM);
                     } else {
                         throw new IllegalArgumentException(usage);
                     }
                 }
-                case "clear" -> {
+                case "unselect" -> {
                     requireArguments(args, 1);
                     selections.remove(actor);
                     player.sendMessage("Текущее выделение очищено.");
                 }
-                default -> player.sendMessage(HELP);
+                default -> {
+                    var former = args[0].toLowerCase(Locale.ROOT);
+                    var renamed = RENAMED.get(former);
+                    player.sendMessage(renamed == null ? HELP : "Команда /bake " + former
+                            + " переименована: используйте /bake " + renamed + ".");
+                }
             }
         } catch (IllegalArgumentException error) {
             player.sendMessage(error.getMessage());
@@ -238,7 +250,7 @@ public final class MarkingController implements Listener, TabExecutor {
             boolean first = event.getAction() == Action.LEFT_CLICK_BLOCK;
             var other = first ? old.second() : old.first();
             if (other != null && !other.worldId().equals(block.worldId())) {
-                throw new IllegalArgumentException("Углы должны находиться в одном мире. Сброс: /bake clear.");
+                throw new IllegalArgumentException("Углы должны находиться в одном мире. Сброс: /bake unselect.");
             }
             selections.put(player.getUniqueId(), new Selection(first ? block : old.first(),
                     first ? old.second() : block, old.outputs()));
@@ -352,7 +364,7 @@ public final class MarkingController implements Listener, TabExecutor {
         var reference = FarmArguments.complete(farms, args, 1);
         if (reference != null) return reference;
         int afterReference = args[1].equalsIgnoreCase(FarmArguments.ID_FLAG) ? 3 : 2;
-        if (args.length == afterReference + 1 && args[0].equalsIgnoreCase("delete")
+        if (args.length == afterReference + 1 && args[0].equalsIgnoreCase("unregister")
                 && CONFIRM.startsWith(args[afterReference].toLowerCase(Locale.ROOT))) {
             return List.of(CONFIRM);
         }
