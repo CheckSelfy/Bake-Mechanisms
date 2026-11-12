@@ -1,7 +1,6 @@
 package io.github.checkselfy.bakemechanisms.stasis;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.Mockito.*;
 
 import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
@@ -130,37 +129,64 @@ class StasisCommandsTest {
             checkRetryLimit(++retries);
             tasks.removeFirst().run();
         }
-        assertEquals(StasisStabilizer.MAX_WAIT_TICKS, retries);
-        verify(service, times(StasisStabilizer.MAX_WAIT_TICKS + 1)).enter(id, creator);
-        verify(player).sendMessage(and(startsWith(new PistonInMotionException().getMessage()), contains("READY")));
+        assertEquals(10, retries);
+        verify(service, times(11)).enter(id, creator);
+        verify(player).sendMessage(argThat((String message) -> message.contains("не стабилизировалась за 0.5 с")
+                && message.contains(new PistonInMotionException().getMessage())));
         doNothing().when(service).enter(id, creator);
         deferred.onCommand(player, command, "bake", args);
-        verify(service, times(StasisStabilizer.MAX_WAIT_TICKS + 2)).enter(id, creator);
+        verify(service, times(12)).enter(id, creator);
         assertTrue(tasks.isEmpty());
     }
 
-    @Test void dyingJockeyRetriesAutomaticallyAndReportsProgressToThePlayer() {
+    @Test void entitiesInTransitionAreWaitedOutAutomaticallyWithOneNotice() {
         var player = player(creator);
         var id = farm().id();
         var tasks = new java.util.ArrayDeque<Runnable>();
         var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
-        var dying = new EntityInTransitionException("Сущность ZOMBIFIED_PIGLIN погибает или удаляется.");
+        var dying = new EntityInTransitionException("Сущность ZOMBIFIED_PIGLIN в группе транспорта умирает или удаляется.");
+        // A jockey rider in its 20-tick death animation, then a rider dismounting, then stable.
         var stubbing = doThrow(dying);
-        for (int i = 0; i < 24; i++) stubbing = stubbing.doThrow(dying);
-        stubbing.doNothing().when(service).enter(id, creator);
+        for (int i = 1; i < 20; i++) stubbing = stubbing.doThrow(dying);
+        stubbing.doThrow(new EntityInTransitionException("Пассажир ZOMBIFIED_PIGLIN садится на CHICKEN или высаживается."))
+                .doNothing().when(service).enter(id, creator);
         deferred.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
-        while (!tasks.isEmpty()) tasks.removeFirst().run();
-        verify(service, times(26)).enter(id, creator);
-        var order = inOrder(player);
-        order.verify(player).sendMessage(and(startsWith("Механизм стабилизируется"), contains("погибает")));
-        order.verify(player).sendMessage(and(contains("20/" + StasisStabilizer.MAX_WAIT_TICKS), contains("погибает")));
-        order.verify(player).sendMessage(contains("STASIS"));
-        verify(player, times(3)).sendMessage(anyString());
+        int retries = 0;
+        while (!tasks.isEmpty()) {
+            assertTrue(++retries <= EntityInTransitionException.MAX_RETRIES, "unbounded retry loop");
+            tasks.removeFirst().run();
+        }
+        assertEquals(21, retries);
+        verify(service, times(22)).enter(id, creator);
+        // Chat: one notice per distinct reason; action bar: a countdown on every retry.
+        verify(player, times(1)).sendMessage(contains("Повторяем стазис автоматически"));
+        verify(player, times(1)).sendMessage(contains("стабилизация продолжается: Пассажир ZOMBIFIED_PIGLIN"));
+        verify(player, times(21)).sendActionBar(argThat((net.kyori.adventure.text.Component bar) ->
+                net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(bar)
+                        .contains("Стабилизация фермы")));
+        verify(player).sendMessage(argThat((String message) -> message.contains("STASIS")
+                && message.contains("Стабилизация заняла 21 тик(ов)")));
     }
 
-    private static void checkRetryLimit(int retries) {
-        assertTrue(retries <= StasisStabilizer.MAX_WAIT_TICKS, "unbounded retry loop");
+    @Test void entitiesThatNeverSettleGiveUpAfterTheirBudgetWithTheReason() {
+        var player = player(creator);
+        var id = farm().id();
+        var tasks = new java.util.ArrayDeque<Runnable>();
+        var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
+        var unstable = new EntityInTransitionException("Сущности чанка 1, 2 ещё загружаются.");
+        doThrow(unstable).when(service).enter(id, creator);
+        deferred.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
+        int retries = 0;
+        while (!tasks.isEmpty()) {
+            assertTrue(++retries <= EntityInTransitionException.MAX_RETRIES, "unbounded retry loop");
+            tasks.removeFirst().run();
+        }
+        assertEquals(EntityInTransitionException.MAX_RETRIES, retries);
+        verify(player).sendMessage(argThat((String message) -> message.contains("не стабилизировалась за 5.0 с")
+                && message.contains(unstable.getMessage())));
     }
+
+    private static void checkRetryLimit(int retries) { assertTrue(retries <= 10, "unbounded retry loop"); }
 
     private FarmRegistry.MarkedFarm farm() {
         var world = UUID.randomUUID();

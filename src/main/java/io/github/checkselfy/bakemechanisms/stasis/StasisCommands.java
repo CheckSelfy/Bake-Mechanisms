@@ -10,6 +10,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
@@ -55,8 +57,10 @@ public final class StasisCommands implements TabExecutor {
             var farm = registry.require(parsed.farm(), player.getUniqueId());
             id = farm.id();
             if (args[0].equalsIgnoreCase("stasis")) {
-                if (!stabilizer.enter(id, player.getUniqueId(), new PlayerProgress(id, player))) {
-                    player.sendMessage("Стазис уже ожидает стабилизации механизма.");
+                if (stabilizer.pending(id)) {
+                    player.sendMessage("Стазис фермы уже ожидает стабилизации механизма.");
+                } else {
+                    enterWhenStable(id, player);
                 }
             } else {
                 stasis.restore(id, player.getUniqueId());
@@ -70,35 +74,49 @@ public final class StasisCommands implements TabExecutor {
         return true;
     }
 
-    /** Tells the requesting player why stasis is still waiting, so a busy farm never looks frozen. */
-    private final class PlayerProgress implements StasisStabilizer.Listener {
-        private final UUID id;
-        private final Player player;
+    /**
+     * Pistons in motion and entities being spawned, killed, mounted or dismounted are waited out automatically.
+     * The player sees why in chat (once per distinct reason) and a live countdown in the action bar.
+     */
+    private void enterWhenStable(UUID id, Player player) {
+        var title = registry.requireCreator(id, player.getUniqueId()).title();
+        stabilizer.enter(id, player.getUniqueId(), new StasisStabilizer.Listener() {
+            private String lastReason;
+            private int waited;
 
-        private PlayerProgress(UUID id, Player player) {
-            this.id = id;
-            this.player = player;
-        }
-
-        @Override public void waiting(int waitedTicks, String reason) {
-            if (waitedTicks == 0) {
-                player.sendMessage("Механизм стабилизируется: " + reason + " Стазис повторится автоматически (до "
-                        + StasisStabilizer.MAX_WAIT_TICKS / 20 + " с).");
-            } else {
-                player.sendMessage("Ждём стабилизации механизма: " + waitedTicks + "/" + StasisStabilizer.MAX_WAIT_TICKS
-                        + " тиков. " + reason);
+            @Override public void waiting(TransientStasisException reason, int retry, int retriesLeft) {
+                waited = retry;
+                if (!reason.getMessage().equals(lastReason)) {
+                    lastReason = reason.getMessage();
+                    player.sendMessage(retry == 1
+                            ? "Ферма " + title + ": " + reason.getMessage() + " Повторяем стазис автоматически…"
+                            : "Ферма " + title + ", стабилизация продолжается: " + reason.getMessage());
+                }
+                player.sendActionBar(Component.text("Стабилизация фермы " + title + " перед стазисом: попытка "
+                        + (retry + 1) + ", осталось до " + seconds(retriesLeft + 1) + " с", NamedTextColor.YELLOW));
             }
-        }
 
-        @Override public void entered() {
-            player.sendMessage("Ферма " + registry.requireCreator(id, player.getUniqueId()).title()
-                    + ": STASIS. Механизм сохранён и заменён заполнителем.");
-        }
+            @Override public void entered() {
+                player.sendMessage("Ферма " + title + ": STASIS. Механизм сохранён и заменён заполнителем."
+                        + (waited == 0 ? "" : " Стабилизация заняла " + waited + " тик(ов)."));
+                if (waited > 0) player.sendActionBar(Component.text("Ферма " + title + ": STASIS", NamedTextColor.GREEN));
+            }
 
-        @Override public void failed(IllegalArgumentException error) {
-            player.sendMessage(error.getMessage());
-            if (error.getCause() != null) logger.log(Level.WARNING, "Stasis operation failed for " + id, error);
-        }
+            @Override public void failed(IllegalArgumentException error) {
+                if (waited > 0 && error instanceof TransientStasisException) {
+                    player.sendMessage("Ферма " + title + " не стабилизировалась за " + seconds(waited)
+                            + " с. Последняя причина: " + error.getMessage() + " Повторите /bake stasis позже.");
+                    player.sendActionBar(Component.text("Ферма " + title + ": стазис не выполнен", NamedTextColor.RED));
+                } else {
+                    player.sendMessage(error.getMessage());
+                }
+                if (error.getCause() != null) logger.log(Level.WARNING, "Stasis operation failed for " + id, error);
+            }
+        });
+    }
+
+    private static String seconds(int ticks) {
+        return String.format(Locale.ROOT, "%.1f", ticks / 20.0);
     }
 
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {

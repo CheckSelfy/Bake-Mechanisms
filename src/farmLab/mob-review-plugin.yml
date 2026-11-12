@@ -1,0 +1,5 @@
+name: BakeMobPerformanceReview
+version: '1'
+main: io.github.checkselfy.bakemechanisms.lab.MobPerformanceReviewPlugin
+api-version: '26.3'
+depend: [BakeMechanisms, BakeFarmLab]

@@ -92,10 +92,16 @@ public final class PaperEntitySnapshots {
                     throw new IllegalStateException("Закройте инвентарь транспорта перед стазисом.");
                 }
             }
-            requireStable(root);
+            requireStable(root, members);
+            // Spawner mobs are commonly non-persistent (not written to chunk files). Paper refuses to serialize them
+            // without FORCE; the NBT keeps Bukkit.persist=false, so the restored mob stays non-persistent. FORCE also
+            // admits dead or removed entities, which is why every member was checked to be valid above.
+            var flags = members.stream().allMatch(Entity::isPersistent)
+                    ? new EntitySerializationFlag[] { EntitySerializationFlag.PASSENGERS }
+                    : new EntitySerializationFlag[] { EntitySerializationFlag.PASSENGERS, EntitySerializationFlag.FORCE };
             byte[] data;
             try {
-                data = plugin.getServer().getUnsafe().serializeEntity(root, EntitySerializationFlag.PASSENGERS);
+                data = plugin.getServer().getUnsafe().serializeEntity(root, flags);
             } catch (IllegalArgumentException changing) {
                 // Paper refuses a tree with a member that became invalid during this tick (killed, discarded).
                 throw new EntityInTransitionException("Сущность в группе транспорта " + root.getType()
@@ -107,13 +113,28 @@ public final class PaperEntitySnapshots {
                 var copy = plugin.getServer().getUnsafe().deserializeEntity(data, world, true, true);
                 var copies = new LinkedHashMap<UUID, Entity>();
                 for (var member : tree(copy)) copies.put(member.getUniqueId(), member);
-                // Restore spawns the root at its saved location and every vehicle positions its riders on its own
-                // tick, exactly as after a chunk load. A rider's momentary coordinates are therefore not part of
-                // the restored state; who rides what is. Natively saved passengers that were skipped or
-                // re-attached elsewhere mean the tree is changing right now.
-                if (!vehicles(root).equals(vehicles(copy))) {
-                    throw new EntityInTransitionException("Группа транспорта " + root.getType()
-                            + " меняет состав: кто-то садится или высаживается.");
+                // Validate what restore actually reproduces. Restore spawns the root at its saved position and the
+                // vehicle seats every passenger, then re-seats it on each tick from the vehicle's position and body
+                // rotation (e.g. a chicken jockey's rider), which NBT does not store. So a passenger's own
+                // coordinates are not state: compare the root's exact position and every passenger's vehicle
+                // instead. requireStable already proved the live tree consistent in this same tick, so a copy that
+                // disagrees is an NBT fidelity problem, not a concurrent change, and retrying cannot fix it.
+                for (var member : members) {
+                    var restored = copies.get(member.getUniqueId());
+                    if (restored == null) {
+                        throw new IllegalStateException("NBT не сохраняет сущность " + member.getType()
+                                + " в группе транспорта.");
+                    }
+                    var vehicle = member.getVehicle();
+                    if (vehicle == null) {
+                        if (member.getLocation().distanceSquared(restored.getLocation()) > 0.00000001) {
+                            throw new IllegalStateException("NBT меняет текущую позицию " + member.getType() + ".");
+                        }
+                    } else if (restored.getVehicle() == null
+                            || !restored.getVehicle().getUniqueId().equals(vehicle.getUniqueId())) {
+                        throw new IllegalStateException("NBT не сохраняет посадку пассажира " + member.getType()
+                                + " на " + vehicle.getType() + ".");
+                    }
                 }
                 for (var member : members) if (member instanceof InventoryHolder holder) {
                     if (!(copies.get(member.getUniqueId()) instanceof InventoryHolder restored)
@@ -265,6 +286,29 @@ public final class PaperEntitySnapshots {
         }
     }
 
+    /**
+     * Rejects, as retryable, a passenger tree caught between two stable states. Between ticks a lone dying or
+     * removed entity is simply skipped (its loot is already dropped), but one still linked to a living vehicle or
+     * passenger would be written into, or torn out of, that member's NBT.
+     */
+    private static void requireStable(List<Entity> members) {
+        for (var entity : members) {
+            if (!entity.isValid()) {
+                throw new EntityInTransitionException("Сущность " + entity.getType() + " в группе транспорта умирает или удаляется.");
+            }
+            if (!entity.isInWorld()) {
+                throw new EntityInTransitionException("Сущность " + entity.getType() + " ещё добавляется в мир.");
+            }
+            for (var passenger : entity.getPassengers()) {
+                var vehicle = passenger.getVehicle();
+                if (vehicle == null || !vehicle.getUniqueId().equals(entity.getUniqueId())) {
+                    throw new EntityInTransitionException("Пассажир " + passenger.getType() + " садится на "
+                            + entity.getType() + " или высаживается.");
+                }
+            }
+        }
+    }
+
     private static void validateType(Entity entity) {
         if (entity instanceof Player || !SUPPORTED.contains(entity.getType())) {
             throw new IllegalStateException("Нет проверенного сериализатора сущности " + entity.getType());
@@ -304,31 +348,24 @@ public final class PaperEntitySnapshots {
         return !entity.isValid() && entity.isDead() && entity.getVehicle() == null && entity.getPassengers().isEmpty();
     }
 
-    /** Every live member is tracked by the world and agrees with its vehicle about who rides whom. */
-    private static void requireStable(Entity root) {
+    /** Every live member is in the world and agrees with its vehicle about who rides whom. */
+    private static void requireStable(Entity root, List<Entity> members) {
         if (root.getVehicle() != null) throw transition(root, "садится в транспорт или покидает его");
-        for (var member : tree(root)) {
+        for (var member : members) {
             if (!member.isValid()) {
                 throw transition(member, member.isDead() ? "погибает или удаляется" : "ещё появляется в мире");
             }
+            if (!member.isInWorld()) throw transition(member, "ещё добавляется в мир");
             for (var passenger : member.getPassengers()) {
-                if (!member.equals(passenger.getVehicle())) throw transition(passenger, "садится в транспорт или покидает его");
+                if (!member.equals(passenger.getVehicle())) {
+                    throw transition(passenger, "садится в транспорт или покидает его");
+                }
             }
         }
     }
 
     private static EntityInTransitionException transition(Entity entity, String change) {
         return new EntityInTransitionException("Сущность " + entity.getType() + " " + change + ".");
-    }
-
-    /** Member to the UUID of the vehicle it rides inside this tree; the root maps to itself. */
-    private static java.util.Map<UUID, UUID> vehicles(Entity root) {
-        var result = new LinkedHashMap<UUID, UUID>();
-        result.put(root.getUniqueId(), root.getUniqueId());
-        for (var member : tree(root)) for (var passenger : member.getPassengers()) {
-            result.put(passenger.getUniqueId(), member.getUniqueId());
-        }
-        return result;
     }
 
     private static List<Entity> tree(Entity root) {

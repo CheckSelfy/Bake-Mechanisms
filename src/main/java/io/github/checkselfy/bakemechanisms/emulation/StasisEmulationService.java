@@ -94,8 +94,17 @@ public final class StasisEmulationService {
         this.store = Objects.requireNonNull(store, "store");
     }
 
-    /** Starts or continues production of a farm in stasis from {@code state}, keeping its outputs loaded. */
+    /**
+     * Starts or continues production of a farm in stasis from {@code state}, keeping its outputs loaded.
+     *
+     * @throws IllegalStateException when the farm already produces: replacing its stream would drop the buffered
+     *                               items and fractions and leak its chunk tickets, and running two would multiply
+     *                               its output
+     */
     public void start(MarkedFarm farm, EmulationState state) {
+        if (running.containsKey(farm.id())) {
+            throw new IllegalStateException("Эмуляция фермы " + farm.id() + " уже запущена.");
+        }
         var emulation = new ProfileEmulation(farm.profile(), state);
         var chunks = outputChunks(farm);
         tickets.acquireAll(chunks);
@@ -145,6 +154,11 @@ public final class StasisEmulationService {
     public void stopDraining(UUID farmId) {
         var farm = draining.remove(farmId);
         if (farm != null) farm.chunks.forEach(tickets::release);
+    }
+
+    /** True while the farm in stasis has a production stream, running or paused. */
+    public boolean producing(UUID farmId) {
+        return running.containsKey(farmId);
     }
 
     /** True while a restored farm still has buffered items waiting for space in its outputs. */

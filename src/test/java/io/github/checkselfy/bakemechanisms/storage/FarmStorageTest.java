@@ -264,6 +264,47 @@ class FarmStorageTest {
                 new FarmStorage(root).loadAll());
     }
 
+    @Test
+    void emulationStateWrittenBeforeTheGameTickFixKeepsItsMeaningAndContinuesExactly() throws IOException {
+        // Byte-for-byte format 2 as written before #12: gold1 after three updates, nothing buffered.
+        var gold1 = new ProductionProfile(Map.of(Material.ROTTEN_FLESH, 2.5027932960893855,
+                Material.CHICKEN, 0.1005586592178771), 3580);
+        var farm = new MarkedFarm(UUID.randomUUID(), UUID.randomUUID(), mechanism(), chest(), State.STASIS, gold1);
+        var storage = new FarmStorage(root);
+        storage.save(farm);
+        var legacy = new java.io.ByteArrayOutputStream();
+        try (var out = new java.io.DataOutputStream(legacy)) {
+            out.writeInt(0x42414b45); // "BAKE"
+            out.writeInt(2);
+            out.writeInt(1); // outputs
+            out.writeInt(2); // fractions, sorted by material
+            out.writeUTF("minecraft:chicken");
+            out.writeUTF("0.3016759776536313");
+            out.writeUTF("minecraft:rotten_flesh");
+            out.writeUTF("0.5083798882681565");
+            out.writeInt(0); // buffer
+        }
+        var file = root.resolve(farm.id().toString()).resolve("emulation.dat");
+        Files.write(file, legacy.toByteArray());
+
+        var state = storage.loadAll().getFirst().emulation().orElseThrow();
+        assertEquals(new EmulationState(Map.of(Material.CHICKEN, new BigDecimal("0.3016759776536313"),
+                Material.ROTTEN_FLESH, new BigDecimal("0.5083798882681565")), Map.of()), state);
+        storage.saveEmulation(farm.id(), state);
+        assertArrayEquals(legacy.toByteArray(), Files.readAllBytes(file), "the current writer still writes format 2");
+
+        // Continuing to 1,200 game ticks in total adds exactly what an uninterrupted run would: 150 - 7 and 6 - 0.
+        var emulation = new io.github.checkselfy.bakemechanisms.emulation.ProfileEmulation(gold1, state);
+        var produced = new java.util.EnumMap<Material, Integer>(Material.class);
+        for (int update = 0; update < 57; update++) {
+            emulation.update(20, (output, type, amount) -> {
+                produced.merge(type, amount, Integer::sum);
+                return amount;
+            });
+        }
+        assertEquals(Map.of(Material.ROTTEN_FLESH, 143, Material.CHICKEN, 6), produced);
+    }
+
     private static Cuboid mechanism() {
         return new Cuboid(new BlockPosition(WORLD, 0, 60, 0), new BlockPosition(WORLD, 4, 64, 4));
     }

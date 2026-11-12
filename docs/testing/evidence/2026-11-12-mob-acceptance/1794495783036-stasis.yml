@@ -1,0 +1,79 @@
+label: stasis
+world: 87537678-3ba0-439d-bc3c-30bc0ac8d584
+start-game-time: 5546
+end-game-time: 6746
+elapsed-game-ticks: 1200
+requested-game-ticks: 1200
+elapsed-server-ticks: 1200
+server-ticks-without-game-tick: 0
+wall-seconds: 60.016
+tps: 19.995
+mspt:
+  samples: 1200
+  mean: 2.344
+  median: 0.95
+  p95: 6.791
+  max: 719.466
+safe-afk-profile-position:
+- 16
+- 89
+- 16
+players:
+  ReviewCreator:
+  - 16.5
+  - 89.0
+  - 16.5
+farm-states:
+  1d22b11f-9b31-4b26-9b96-00fdff786ff1: STASIS
+  c1811846-dca5-4835-a84b-042c7b5f6da7: STASIS
+  d52c15a4-0ec2-417c-ba51-614ea646d373: STASIS
+initial-inventory:
+  mobperf01: {}
+  mobperf02: {}
+  mobperf03: {}
+final-inventory:
+  mobperf01:
+    minecraft:gold_nugget: 23
+    minecraft:rotten_flesh: 169
+  mobperf02:
+    minecraft:chicken: 5
+    minecraft:gold_nugget: 18
+    minecraft:rotten_flesh: 170
+    minecraft:feather: 5
+  mobperf03:
+    minecraft:gold_nugget: 165
+    minecraft:rotten_flesh: 13
+    minecraft:chicken: 5
+inventory-delta:
+  mobperf01:
+    minecraft:gold_nugget: 23
+    minecraft:rotten_flesh: 169
+  mobperf02:
+    minecraft:chicken: 5
+    minecraft:feather: 5
+    minecraft:gold_nugget: 18
+    minecraft:rotten_flesh: 170
+  mobperf03:
+    minecraft:chicken: 5
+    minecraft:gold_nugget: 165
+    minecraft:rotten_flesh: 13
+profile-rates-per-20-ticks:
+  1d22b11f-9b31-4b26-9b96-00fdff786ff1:
+  - minecraft:gold_nugget: 2.7430167597765363
+    minecraft:rotten_flesh: 0.21787709497206703
+    minecraft:chicken: 0.08379888268156424
+  c1811846-dca5-4835-a84b-042c7b5f6da7:
+  - minecraft:gold_nugget: 0.3854748603351955
+    minecraft:rotten_flesh: 2.82122905027933
+    minecraft:chicken: 0.00558659217877095
+  d52c15a4-0ec2-417c-ba51-614ea646d373:
+  - minecraft:chicken: 0.09497206703910614
+    minecraft:gold_nugget: 0.29608938547486036
+    minecraft:rotten_flesh: 2.8324022346368714
+    minecraft:feather: 0.09497206703910614
+spark-profiler: started and stopped with --save-to-file
+spark-artifacts-created:
+- profile-2026-11-12_17.03.02.sparkprofile
+spark-artifacts:
+- profile-2026-11-12_16.56.24.sparkprofile
+- profile-2026-11-12_17.03.02.sparkprofile

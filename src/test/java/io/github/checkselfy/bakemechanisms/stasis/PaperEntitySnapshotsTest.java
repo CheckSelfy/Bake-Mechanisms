@@ -263,9 +263,108 @@ class PaperEntitySnapshotsTest {
         initialize(cow, EntityType.COW);
         when(cow.isPersistent()).thenReturn(false);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
-        when(serialization.serializeEntity(cow, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.serializeEntity(cow, EntitySerializationFlag.PASSENGERS, EntitySerializationFlag.FORCE))
+                .thenReturn(new byte[] { 1 });
         when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(cow);
         assertEquals(1, snapshots.capture(world, region).size());
+        // Paper rejects non-persistent entities without FORCE; persistent trees keep the plain flags.
+        verify(serialization, never()).serializeEntity(cow, EntitySerializationFlag.PASSENGERS);
+    }
+
+    @Test void invalidPassengerOfAValidVehicleIsNeverForceSerialized() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(rider.isPersistent()).thenReturn(false);
+        when(rider.isValid()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        // A rider in its death animation leaves its chicken within 20 ticks: retryable, never serialized.
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void livingRiderOfADyingVehicleIsWaitedForInsteadOfSkipped() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(chicken.isValid()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken, rider));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void mountingDismountingAndUnaddedEntitiesAreRetryableAndNeverSerialized() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        // The chicken lists the rider, the rider no longer names the chicken: a dismount in progress.
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(rider.isInWorld()).thenReturn(false);
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void chickenJockeyIsAcceptedAlthoughNbtReseatsItsRiderElsewhere() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(rider.getLocation()).thenReturn(new org.bukkit.Location(world, 0.07, 64.6, -0.07));
+        var chickenCopy = mock(org.bukkit.entity.Chicken.class);
+        var riderCopy = mock(org.bukkit.entity.PigZombie.class);
+        var chickenId = chicken.getUniqueId();
+        var riderId = rider.getUniqueId();
+        when(chickenCopy.getUniqueId()).thenReturn(chickenId);
+        when(riderCopy.getUniqueId()).thenReturn(riderId);
+        when(chickenCopy.getPassengers()).thenReturn(List.of(riderCopy));
+        when(chickenCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(riderCopy.getVehicle()).thenReturn(chickenCopy);
+        // The detached copy seats the rider from the default body rotation, not the live one.
+        when(riderCopy.getLocation()).thenReturn(new org.bukkit.Location(world, -0.1, 64.6, 0));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(rider, chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
+        var groups = snapshots.capture(world, region);
+        assertEquals(1, groups.size());
+        assertEquals(List.of(chicken.getUniqueId(), rider.getUniqueId()), groups.getFirst().members());
+    }
+
+    @Test void vehicleWhoseNbtLosesThePassengerOrMovesTheRootIsRejected() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        var chickenCopy = mock(org.bukkit.entity.Chicken.class);
+        var riderCopy = mock(org.bukkit.entity.PigZombie.class);
+        var chickenId = chicken.getUniqueId();
+        var riderId = rider.getUniqueId();
+        when(chickenCopy.getUniqueId()).thenReturn(chickenId);
+        when(riderCopy.getUniqueId()).thenReturn(riderId);
+        when(chickenCopy.getPassengers()).thenReturn(List.of(riderCopy));
+        when(chickenCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(riderCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
+        // Seated on nothing in the copy.
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(riderCopy.getVehicle()).thenReturn(chickenCopy);
+        when(chickenCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0.5, 64, 0));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
     }
 
     @Test void justDiscardedEntityIsIgnoredBeforeSerialization() {
@@ -386,7 +485,7 @@ class PaperEntitySnapshotsTest {
         assertEquals(List.of(chicken.getUniqueId(), rider.getUniqueId()), groups.getFirst().members());
     }
 
-    @Test void passengerMissingFromTheNativeCopyIsRetryable() {
+    @Test void passengerMissingFromTheNativeCopyIsRefusedAsAFidelityProblem() {
         var chicken = entity(EntityType.CHICKEN);
         var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
         mount(chicken, rider);
@@ -396,7 +495,11 @@ class PaperEntitySnapshotsTest {
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
         when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
         when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
-        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        // The live tree was proved consistent in this same tick, so the loss is the NBT's, not a race: a retry
+        // cannot fix it and must not be reported as "did not stabilize".
+        // IllegalStateException, not a TransientStasisException (an IllegalArgumentException): no retry.
+        var refused = assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        assertTrue(refused.getMessage().contains("NBT не сохраняет сущность"));
     }
 
     @Test void standaloneCorpseIsSkippedByCaptureAndDiscardedWithTheOriginals() {
@@ -448,6 +551,7 @@ class PaperEntitySnapshotsTest {
         when(entity.getUniqueId()).thenReturn(UUID.randomUUID());
         when(entity.getType()).thenReturn(type);
         when(entity.isValid()).thenReturn(true);
+        when(entity.isInWorld()).thenReturn(true);
         when(entity.isPersistent()).thenReturn(true);
         when(entity.getBoundingBox()).thenReturn(new BoundingBox(0, 64, 0, 0.8, 65, 0.8));
         when(entity.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));

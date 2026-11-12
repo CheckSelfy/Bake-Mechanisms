@@ -1,25 +1,29 @@
 package io.github.checkselfy.bakemechanisms.stasis;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * Enters stasis on the first tick in which the mechanism is stable. A farm keeps running natively between
- * attempts: pistons finish their stroke, killed mobs finish dying and riders finish mounting. Each attempt
- * repeats every ownership, state and occupancy check of {@link StasisService#enter}. At most one attempt per farm
- * is waiting at a time. Server thread only.
+ * Enters stasis and, while the mechanism is briefly unstable ({@link TransientStasisException}), tries again on
+ * the next ticks within that instability's own budget. Server thread only.
  */
 public final class StasisStabilizer {
-    /** A killed mob needs 20 ticks to leave the world; several overlapping kills and strokes fit in 5 seconds. */
-    public static final int MAX_WAIT_TICKS = 100;
-    public static final int STATUS_EVERY_TICKS = 20;
-
+    /** What the requester learns about one entry request. */
     public interface Listener {
-        /** Called on the first refused attempt and then every {@link #STATUS_EVERY_TICKS} ticks. */
-        void waiting(int waitedTicks, String reason);
+        /**
+         * The attempt found the mechanism unstable and another attempt is scheduled for the next tick.
+         *
+         * @param retry number of the scheduled retry, from 1
+         * @param retriesLeft further retries this kind of instability allows after the scheduled one
+         */
+        void waiting(TransientStasisException reason, int retry, int retriesLeft);
+
         void entered();
+
+        /** The entry was refused, or the mechanism did not settle within its budget. */
         void failed(IllegalArgumentException error);
     }
 
@@ -27,48 +31,38 @@ public final class StasisStabilizer {
     private final Consumer<Runnable> nextTick;
     private final Set<UUID> pending = new HashSet<>();
 
-    /** @param nextTick runs a task on the next server tick; {@code null} disables retries */
+    /** @param nextTick runs a task on the next server tick; {@code null} disables retrying */
     public StasisStabilizer(StasisService stasis, Consumer<Runnable> nextTick) {
-        this.stasis = stasis;
+        this.stasis = Objects.requireNonNull(stasis, "stasis");
         this.nextTick = nextTick;
     }
 
-    public boolean isPending(UUID farm) {
-        return pending.contains(farm);
+    /** Whether a retry of this farm's entry is already scheduled; a second request must not start another. */
+    public boolean pending(UUID farmId) {
+        return pending.contains(farmId);
     }
 
-    /** @return {@code false}, without another attempt, when this farm already waits for a stable tick */
-    public boolean enter(UUID farm, UUID actor, Listener listener) {
-        if (pending.contains(farm)) return false;
-        attempt(farm, actor, listener, 0);
-        return true;
+    public void enter(UUID farmId, UUID actorId, Listener listener) {
+        attempt(farmId, actorId, Objects.requireNonNull(listener, "listener"), 0);
     }
 
-    private void attempt(UUID farm, UUID actor, Listener listener, int waited) {
-        StasisInTransitionException changing;
+    private void attempt(UUID farmId, UUID actorId, Listener listener, int retries) {
         try {
-            stasis.enter(farm, actor);
-            pending.remove(farm);
+            stasis.enter(farmId, actorId);
+            pending.remove(farmId);
             listener.entered();
-            return;
-        } catch (StasisInTransitionException transition) {
-            changing = transition;
-        } catch (RuntimeException error) {
-            pending.remove(farm);
-            if (error instanceof IllegalArgumentException refused) {
-                listener.failed(refused);
+        } catch (TransientStasisException unstable) {
+            if (nextTick == null || retries >= unstable.maxRetries()) {
+                pending.remove(farmId);
+                listener.failed(unstable);
                 return;
             }
-            throw error;
+            pending.add(farmId);
+            listener.waiting(unstable, retries + 1, unstable.maxRetries() - retries - 1);
+            nextTick.accept(() -> attempt(farmId, actorId, listener, retries + 1));
+        } catch (IllegalArgumentException error) {
+            pending.remove(farmId);
+            listener.failed(error);
         }
-        if (nextTick == null || waited >= MAX_WAIT_TICKS) {
-            pending.remove(farm);
-            listener.failed(waited == 0 ? changing : new StasisInTransitionException(changing.getMessage()
-                    + " Механизм не стабилизировался за " + waited + " тиков; ферма осталась READY. Повторите стазис."));
-            return;
-        }
-        pending.add(farm);
-        if (waited % STATUS_EVERY_TICKS == 0) listener.waiting(waited, changing.getMessage());
-        nextTick.accept(() -> attempt(farm, actor, listener, waited + 1));
     }
 }

@@ -11,6 +11,7 @@ import io.github.checkselfy.bakemechanisms.stasis.PaperStasisWorld;
 import io.github.checkselfy.bakemechanisms.stasis.SnapshotPayload;
 import io.github.checkselfy.bakemechanisms.stasis.StasisService;
 import io.github.checkselfy.bakemechanisms.stasis.StasisStabilizer;
+import io.github.checkselfy.bakemechanisms.stasis.TransientStasisException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -174,10 +175,11 @@ final class NativePiglinFarmCheck extends BukkitRunnable {
         mountedNow.addPassenger(mountingRider);
         dismountingRider.leaveVehicle();
         var stabilizer = new StasisStabilizer(service, task -> plugin.getServer().getScheduler().runTaskLater(plugin, task, 1L));
-        check(stabilizer.enter(farm, creator, new StasisStabilizer.Listener() {
-            @Override public void waiting(int waitedTicks, String reason) {
-                progress.add(waitedTicks + ": " + reason);
-                plugin.getLogger().info("NATIVE_PIGLIN_STABILIZING " + waitedTicks + ": " + reason);
+        check(!stabilizer.pending(farm), "a request was already pending before the first one");
+        stabilizer.enter(farm, creator, new StasisStabilizer.Listener() {
+            @Override public void waiting(TransientStasisException reason, int retry, int retriesLeft) {
+                progress.add(retry + ": " + reason.getMessage());
+                plugin.getLogger().info("NATIVE_PIGLIN_STABILIZING " + retry + ": " + reason.getMessage());
             }
             @Override public void entered() {
                 enteredAt = tick;
@@ -186,7 +188,7 @@ final class NativePiglinFarmCheck extends BukkitRunnable {
             @Override public void failed(IllegalArgumentException error) {
                 cancel(); cleanup(); finish.accept(new AssertionError("stasis did not stabilize: " + progress, error));
             }
-        }), "stabilizer refused the first request");
+        });
     }
 
     private void afterEnter() throws Exception {

@@ -63,6 +63,36 @@ class StasisEmulationServiceTest {
     }
 
     @Test
+    void secondStartOfAProducingFarmIsRejectedWithoutDroppingItsBufferOrLeakingTickets() {
+        var farm = stasis(Map.of(Material.KELP, 1.0));
+        world.capacity.put(farm.outputs().get(0), 0);
+        service.start(farm, empty());
+        tick(20); // one kelp waits in the buffer
+        var before = store.emulation.get(farm.id());
+        assertThrows(IllegalStateException.class, () -> service.start(farm, empty()));
+        assertTrue(service.producing(farm.id()));
+        service.stopAll();
+        assertEquals(before, store.emulation.get(farm.id()), "the running stream and its buffer are kept");
+        assertTrue(world.tickets.isEmpty(), "one stream holds one ticket per output chunk");
+    }
+
+    @Test
+    void oneStreamProducesExactlyTheProfileNoMatterHowOftenOtherFarmsStartAndFinish() {
+        var farm = stasis(Map.of(Material.KELP, 1.0));
+        service.start(farm, empty());
+        for (int cycle = 0; cycle < 10; cycle++) {
+            var otherOutput = new OutputContainer(OutputContainer.Type.BARREL, Set.of(block(60 + cycle, 0, 0)));
+            world.outputs.put(otherOutput, new EnumMap<>(Material.class));
+            var other = new MarkedFarm(UUID.randomUUID(), creator, new Cuboid(block(10, 0, 0), block(12, 2, 2)),
+                    otherOutput, State.STASIS, new ProductionProfile(Map.of(Material.BONE, 1.0), 3600));
+            service.start(other, empty());
+            tick(20);
+            service.finish(other.id());
+        }
+        assertEquals(Map.of(Material.KELP, 10), world.items(farm.outputs().get(0)));
+    }
+
+    @Test
     void idleUpdatesDoNotRewriteUnchangedState() {
         var farm = stasis(Map.of(Material.KELP, 1.0));
         world.capacity.put(farm.outputs().get(0), 0);

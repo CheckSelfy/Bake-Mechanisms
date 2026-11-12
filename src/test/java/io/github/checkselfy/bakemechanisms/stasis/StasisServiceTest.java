@@ -325,6 +325,117 @@ class StasisServiceTest {
     }
 
     @Test
+    void survivingOriginalAfterTheFillerIsTreatedAsAFailedReplacementAndRemovedAgain() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        doThrow(new IllegalStateException("Оригинал сущности ZOMBIFIED_PIGLIN не удалён.")).when(world)
+                .verifyHandoff(any(), any());
+        var error = assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
+        assertTrue(error.getMessage().contains("unstasis"), error.getMessage());
+        var order = inOrder(world, production);
+        order.verify(world).removeEntities(any(), aryEq(new byte[] { 1 }));
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class));
+        order.verify(world).verifyHandoff(any(), aryEq(new byte[] { 1 }));
+        // Rollback removes the snapshot members again before the filler and production stand in for them.
+        order.verify(world).removeEntities(any(), aryEq(new byte[] { 1 }));
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class));
+        order.verify(production).start(any());
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
+    void repeatedFailedEntryAttemptsNeverStartProduction() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenThrow(new IllegalStateException("entity is mounting"));
+        for (int attempt = 0; attempt < 3; attempt++) {
+            assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
+        }
+        verifyNoInteractions(production);
+        assertFalse(producing.producing(farm.id()));
+        assertEquals(State.READY, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
+    void failedEntryWhoseRollbackFailedStartsItsOnlyStreamOnceARestoreRollbackRefills() throws Exception {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        doThrow(new IllegalStateException("world failure"), new IllegalStateException("rollback failure"))
+                .doNothing().when(world).fill(any(), any(FillerStyle.class));
+        assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
+        verify(production, never()).start(any());
+
+        // The original may partly remain: the restore attempt must not pause, resume or finish a stream that never ran.
+        doThrow(new IllegalStateException("partial restore")).doNothing().when(world).restore(any(), any());
+        assertThrows(IllegalArgumentException.class, () -> producing.restore(farm.id(), creator));
+        verify(production, never()).pause(any());
+        verify(production, never()).resume(any());
+        verify(production, times(1)).start(registry.requireCreator(farm.id(), creator));
+        assertTrue(producing.producing(farm.id()));
+
+        producing.restore(farm.id(), creator);
+        var order = inOrder(production);
+        order.verify(production).start(any());
+        order.verify(production).pause(farm.id());
+        order.verify(production).finish(farm.id());
+        verify(production, times(1)).start(any());
+        assertFalse(producing.producing(farm.id()));
+    }
+
+    @Test
+    void repeatedFailedRestoresResumeTheSameStreamWithoutStartingAnother() throws Exception {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        producing.enter(farm.id(), creator);
+        doThrow(new IllegalStateException("partial restore")).when(world).restore(any(), any());
+        for (int attempt = 0; attempt < 3; attempt++) {
+            assertThrows(IllegalArgumentException.class, () -> producing.restore(farm.id(), creator));
+        }
+        verify(production, times(1)).start(any());
+        verify(production, times(3)).pause(farm.id());
+        verify(production, times(3)).resume(farm.id());
+        verify(production, never()).finish(any());
+    }
+
+    @Test
+    void everyStasisPeriodHasExactlyOneStreamAcrossRecoveryAndRepeatedCycles() throws Exception {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(any())).thenReturn(new byte[] { 1 });
+        producing.enter(farm.id(), creator);
+        var stasisFarm = registry.requireCreator(farm.id(), creator);
+
+        // A restart: the new process starts the saved stream exactly once and can restore it.
+        when(store.loadActive()).thenReturn(List.of(new SavedSnapshot(stasisFarm, new byte[] { 1 })));
+        var restartedProduction = mock(StasisProduction.class);
+        var restartedRegistry = new FarmRegistry(100);
+        restartedRegistry.restore(stasisFarm);
+        var restarted = new StasisService(restartedRegistry, world, store, restartedProduction);
+        restarted.recover();
+        verify(restartedProduction, times(1)).start(stasisFarm);
+        restarted.restore(farm.id(), creator);
+        verify(restartedProduction).finish(farm.id());
+
+        // The next cycle of the same farm starts a new stream only after the previous one finished.
+        restartedRegistry.markProfiling(farm.id());
+        restartedRegistry.markReady(farm.id(), new ProductionProfile(Map.of(Material.STONE, 2.0), 1200));
+        restarted.enter(farm.id(), creator);
+        var order = inOrder(restartedProduction);
+        order.verify(restartedProduction).start(any());
+        order.verify(restartedProduction).finish(farm.id());
+        order.verify(restartedProduction).start(any());
+        assertTrue(restarted.producing(farm.id()));
+    }
+
+    @Test
     void recoveryContinuesProductionOfEveryActiveSnapshot() throws Exception {
         var farm = ready();
         var stasisFarm = registry.markStasis(farm.id());

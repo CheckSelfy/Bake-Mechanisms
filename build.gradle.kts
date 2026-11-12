@@ -182,9 +182,15 @@ tasks.register("resetFarmLab") {
     group = "application"
     description = "Deletes the local server's farm_lab world and the Bake Mechanisms data that referred to it; " +
         "the next runServer rebuilds the lab from test-worlds."
-    val serverDir = layout.projectDirectory.dir("server").asFile
+    // -PfarmLabServer=<dir> resets another server directory (used by scripts/test_mob_performance_world.py).
+    val serverDir = providers.gradleProperty("farmLabServer").orNull?.let { file(it) }
+        ?: layout.projectDirectory.dir("server").asFile
     doLast {
-        val lock = serverDir.resolve("world/session.lock")
+        // The lab worlds live inside the server's level folder (level-name; "world" by default, "lobby" in scripts).
+        val level = serverDir.resolve("server.properties").takeIf { it.isFile }?.readLines()
+            ?.firstOrNull { it.startsWith("level-name=") }?.substringAfter('=')?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "world"
+        val lock = serverDir.resolve("$level/session.lock")
         if (lock.exists()) {
             RandomAccessFile(lock, "rw").use { file ->
                 val held = try { file.channel.tryLock() } catch (e: OverlappingFileLockException) { null }
@@ -193,30 +199,45 @@ tasks.register("resetFarmLab") {
             }
         }
         val labData = serverDir.resolve("plugins/BakeFarmLab")
-        // The crop and mob-performance labs are separate generated worlds.  Keep both
-        // ids: otherwise resetting after the mob benchmark has registered farms leaves
-        // its old registrations behind.
+        // Every lab world this server ever generated (plugins/BakeFarmLab-worlds.txt survives resets), plus the
+        // current crop and mob-performance markers for labs started before that history existed.
+        val history = serverDir.resolve("plugins/BakeFarmLab-worlds.txt").takeIf { it.isFile }?.readLines().orEmpty()
         val labWorlds = buildSet {
+            history.filter { it.startsWith("lab=") }.map { it.substringAfter('=').trim() }.filter { it.isNotEmpty() }
+                .forEach(::add)
             labData.resolve("world-uid.txt").takeIf { it.isFile }?.readText()?.trim()
                 ?.takeIf { it.isNotEmpty() }?.let(::add)
-            labData.resolve("mob-performance-v7.txt").takeIf { it.isFile }?.readLines()
-                ?.firstOrNull { it.startsWith("world=") }?.substringAfter('=')?.trim()
-                ?.takeIf { it.isNotEmpty() }?.let(::add)
+            labData.listFiles { file -> file.name.startsWith("mob-performance-v") && file.name.endsWith(".txt") }
+                .orEmpty().forEach { marker ->
+                    marker.readLines().firstOrNull { it.startsWith("world=") }?.substringAfter('=')?.trim()
+                        ?.takeIf { it.isNotEmpty() }?.let(::add)
+                }
         }
+        // The server's own (non-lab) worlds as of the last lab start; their registrations are kept.
+        val serverWorlds = history.filter { it.startsWith("server=") }.map { it.substringAfter('=').trim() }.toSet()
         val farms = serverDir.resolve("plugins/BakeMechanisms/farms")
         farms.listFiles { file -> file.isDirectory }.orEmpty().forEach { farm ->
             val world = farm.resolve("farm.yml").takeIf { it.isFile }?.readLines()
                 ?.firstOrNull { it.startsWith("world:") }?.substringAfter(":")?.trim()?.trim('\'', '"')
-            // Without a recorded lab world, every registration is treated as the lab's: this is a local test server.
-            if (labWorlds.isEmpty() || world == null || world in labWorlds) {
+            val stale = when {
+                world == null -> true
+                world in labWorlds -> true
+                // A world that is not one of the server's own was a lab world generated before the history existed.
+                serverWorlds.isNotEmpty() -> world !in serverWorlds
+                // Without any record, every registration is treated as the lab's: this is a local test server.
+                else -> labWorlds.isEmpty()
+            }
+            if (stale) {
                 logger.lifecycle("Deleting farm registration ${farm.name} (world $world).")
                 farm.deleteRecursively()
+            } else {
+                logger.lifecycle("Keeping farm registration ${farm.name} (world $world is not a lab world).")
             }
         }
         // Departure positions of players; recreated on the next logout.
         serverDir.resolve("plugins/BakeMechanisms/offline-players.dat").delete()
-        serverDir.resolve("world/dimensions/minecraft/farm_lab").deleteRecursively()
-        serverDir.resolve("world/dimensions/minecraft/farm_lab_mob_performance").deleteRecursively()
+        serverDir.resolve("$level/dimensions/minecraft/farm_lab").deleteRecursively()
+        serverDir.resolve("$level/dimensions/minecraft/farm_lab_mob_performance").deleteRecursively()
         labData.deleteRecursively()
         logger.lifecycle("Farm lab reset; runServer will rebuild it from test-worlds.")
     }
@@ -260,7 +281,7 @@ tasks.check { dependsOn(tasks.named(farmLab.classesTaskName)) }
 tasks.register<Jar>("farmLabJar") {
     group = "verification"
     archiveFileName.set("bake-farm-lab.jar")
-    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*", "**/SlimeGallery*") }
+    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*", "**/MobPerformanceReviewPlugin*", "**/SlimeGallery*") }
     from("test-worlds/ppl9") { into("fixtures"); exclude("README.md") }
     from("test-worlds/ppl9-mobs") { into("mob-fixtures"); exclude("README.md") }
     from("test-worlds/ppl9-mobs-performance") { into("mob-performance-fixtures"); exclude("README.md") }
@@ -270,6 +291,14 @@ tasks.register<Jar>("slimeGalleryJar") {
     archiveFileName.set("bake-slime-gallery.jar")
     from(farmLab.output) { include("**/SlimeGallery*") }
     from("src/farmLab/slime-plugin.yml") { rename { "plugin.yml" } }
+}
+
+tasks.register<Jar>("mobPerformanceReviewJar") {
+    group = "verification"
+    description = "Headless #12 review of the three-farm zombified-piglin benchmark (scripts/farm-lab.py mob-review)."
+    archiveFileName.set("bake-mob-performance-review.jar")
+    from(farmLab.output) { include("**/MobPerformanceReviewPlugin*") }
+    from("src/farmLab/mob-review-plugin.yml") { rename { "plugin.yml" } }
 }
 
 tasks.register<Jar>("farmLabReviewJar") {
@@ -293,6 +322,7 @@ tasks.register<JavaExec>("stasisSmoke") {
     classpath = files(smokeDir.resolve("paper.jar"))
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Xms512M", "-Xmx1G")
+    providers.gradleProperty("smokeOnly").orNull?.let { jvmArgs("-Dbake.smoke.only=$it") }
     args("nogui")
     doFirst {
         smokeDir.resolve("plugins").mkdirs()
@@ -333,9 +363,74 @@ tasks.register<JavaExec>("stasisSmoke") {
             || !log.contains("PROFILING_INPUT_SMOKE_PASSED")
             || !log.contains("PROFILING_NATURAL_INPUT_SMOKE_PASSED")
             || !log.contains("SLIME_FILLER_SMOKE_PASSED")
+            || !log.contains("EMULATION_RATE_SMOKE_PASSED")
+            || !log.contains("FULL_DOUBLE_CHEST_SMOKE_PASSED")
+            || !log.contains("NATIVE_MOB_STASIS_SMOKE_PASSED")
             || !log.contains("NATIVE_PIGLIN_STASIS_SMOKE_PASSED")
             || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
             throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
+        }
+    }
+}
+
+// #12 Stream B: a live zombified-piglin cell with non-persistent mobs and chicken jockeys enters stasis in one JVM
+// (retrying automatically past a natively dying rider) and is restored from the durable snapshot in a second one.
+val nativeMobDir = layout.projectDirectory.dir("run/native-mob-smoke").asFile
+fun JavaExec.nativeMobServer(phase: String) {
+    dependsOn("setupServer", tasks.jar, stasisSmokeJar)
+    workingDir = nativeMobDir
+    classpath = files(nativeMobDir.resolve("paper.jar"))
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Dbake.native-mob.phase=$phase", "-Xms512M", "-Xmx1G")
+    args("nogui")
+}
+val nativeMobCapture = tasks.register<JavaExec>("nativeMobCapture") {
+    group = "verification"
+    description = "Lets a live zombified-piglin cell run, enters stasis without operator cleanup, then shuts Paper down."
+    nativeMobServer("capture")
+    doFirst {
+        nativeMobDir.resolve("plugins").mkdirs()
+        nativeMobDir.resolve("cache").mkdirs()
+        layout.projectDirectory.file("server/paper.jar").asFile.copyTo(nativeMobDir.resolve("paper.jar"), overwrite = true)
+        layout.projectDirectory.file("server/cache/mojang_26.3.jar").asFile
+            .copyTo(nativeMobDir.resolve("cache/mojang_26.3.jar"), overwrite = true)
+        layout.projectDirectory.file("server/eula.txt").asFile.copyTo(nativeMobDir.resolve("eula.txt"), overwrite = true)
+        tasks.jar.get().archiveFile.get().asFile.copyTo(nativeMobDir.resolve("plugins/bake-mechanisms.jar"), overwrite = true)
+        stasisSmokeJar.get().archiveFile.get().asFile.copyTo(nativeMobDir.resolve("plugins/bake-stasis-smoke.jar"), overwrite = true)
+        nativeMobDir.resolve("server.properties").writeText(
+            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\npause-when-empty-seconds=-1\n"
+        )
+        nativeMobDir.resolve("spigot.yml").writeText("""
+            world-settings:
+              default:
+                entity-activation-range:
+                  animals: 0
+                  monsters: 0
+                  villagers: 0
+                  raiders: 0
+                  water: 0
+                  flying-monsters: 0
+                  misc: 0
+        """.trimIndent())
+        Files.deleteIfExists(nativeMobDir.resolve("logs/latest.log").toPath())
+    }
+    doLast {
+        val log = nativeMobDir.resolve("logs/latest.log").readText()
+        if (!log.contains("NATIVE_MOB_CAPTURE_PASSED") || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Native mob capture failed. See run/native-mob-smoke/logs/latest.log")
+        }
+        nativeMobDir.resolve("logs/native-mob-capture.log").writeText(log)
+    }
+}
+tasks.register<JavaExec>("nativeMobSmoke") {
+    group = "verification"
+    description = "Restarts Paper after nativeMobCapture and restores the zombified piglins and chicken jockeys."
+    nativeMobServer("restore")
+    dependsOn(nativeMobCapture)
+    doLast {
+        val log = nativeMobDir.resolve("logs/latest.log").readText()
+        if (!log.contains("NATIVE_MOB_RESTART_PASSED") || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Native mob restart check failed. See run/native-mob-smoke/logs/latest.log")
         }
     }
 }

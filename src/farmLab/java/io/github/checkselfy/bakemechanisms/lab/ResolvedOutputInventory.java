@@ -14,7 +14,7 @@ import org.bukkit.inventory.ItemStack;
  * double chest is one 54-slot inventory; callers must not use command/NBT data
  * that happens to describe only one physical half.
  */
-final class ResolvedOutputInventory {
+public final class ResolvedOutputInventory {
     private ResolvedOutputInventory() { }
 
     static Inventory at(Block output) {
@@ -25,11 +25,11 @@ final class ResolvedOutputInventory {
         return container.getInventory();
     }
 
-    static void clear(Block output) {
+    public static void clear(Block output) {
         at(output).clear();
     }
 
-    static Map<Material, Integer> count(Block output) {
+    public static Map<Material, Integer> count(Block output) {
         var result = new EnumMap<Material, Integer>(Material.class);
         for (ItemStack item : at(output).getContents()) {
             if (item != null && !item.getType().isAir()) result.merge(item.getType(), item.getAmount(), Integer::sum);

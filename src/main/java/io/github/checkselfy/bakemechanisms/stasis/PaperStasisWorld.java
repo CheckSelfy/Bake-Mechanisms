@@ -62,6 +62,15 @@ public final class PaperStasisWorld implements StasisWorld {
         var region = farm.mechanism();
         var world = world(region);
         loadChunks(world, region);
+        // A chunk's blocks can be loaded while its entities are still being read: such entities would be missed by
+        // the snapshot and survive inside the filler next to their restored copies.
+        for (int x = (region.min().x() >> 4) - 1; x <= (region.max().x() >> 4) + 1; x++) {
+            for (int z = (region.min().z() >> 4) - 1; z <= (region.max().z() >> 4) + 1; z++) {
+                if (!world.getChunkAt(x, z).isEntitiesLoaded()) {
+                    throw new EntityInTransitionException("Сущности чанка " + x + ", " + z + " ещё загружаются.");
+                }
+            }
+        }
         var groups = entities.capture(world, region);
         var voidBlocks = new ArrayList<SnapshotPayload.VoidBlock>();
         for (var output : farm.outputs()) {
@@ -210,6 +219,22 @@ public final class PaperStasisWorld implements StasisWorld {
         var world = world(region);
         loadChunks(world, region);
         entities.remove(world, region, SnapshotPayload.decode(data).groups());
+    }
+
+    @Override public void verifyHandoff(MarkedFarm farm, byte[] data) {
+        for (var group : SnapshotPayload.decode(data).groups()) for (var id : group.members()) {
+            var original = plugin.getServer().getEntity(id);
+            if (original != null && original.isValid()) {
+                throw new IllegalStateException("Оригинал сущности " + original.getType() + " " + id + " не удалён.");
+            }
+        }
+        var world = world(farm.mechanism());
+        for (var entity : world.getNearbyEntities(PaperProfilingWorld.box(farm.mechanism()))) {
+            if (entity.isValid() && !(entity instanceof org.bukkit.entity.Player)) {
+                throw new IllegalStateException("После замены в механизме осталась сущность " + entity.getType()
+                        + " " + entity.getUniqueId() + ", которой нет в снимке.");
+            }
+        }
     }
 
     private World world(Cuboid region) {
