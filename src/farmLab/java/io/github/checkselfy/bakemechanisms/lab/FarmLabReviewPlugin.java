@@ -75,7 +75,7 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
                 check(counts(farm).getOrDefault(Material.valueOf(farm.product()), 0) > 0,
                         "no natural output during warmup: " + farm.id() + " " + counts(farm));
                 pass("NATURAL_OUTPUT", farm.id() + " ticks=" + ticks + " output=" + counts(farm));
-                output(farm).clear();
+                ResolvedOutputInventory.clear(outputBlock(farm));
                 // #25: warmup resources must not be counted as fresh production by a later profile.
                 eachBlock(farm, block -> {
                     if (block.getState(false) instanceof Container container) container.getInventory().clear();
@@ -196,12 +196,13 @@ public final class FarmLabReviewPlugin extends JavaPlugin {
         return storage.loadAll().stream().filter(f -> f.farm().id().equals(ids.get(farm.id()))).findFirst().orElseThrow();
     }
     private org.bukkit.inventory.Inventory output(FarmLabPlugin.Farm farm) {
-        var p = farm.output(); return ((Container) lab.world().getBlockAt(p[0], p[1], p[2]).getState()).getInventory();
+        return ResolvedOutputInventory.at(outputBlock(farm));
     }
     private Map<Material, Integer> counts(FarmLabPlugin.Farm farm) {
-        var result = new java.util.EnumMap<Material, Integer>(Material.class);
-        for (var item : output(farm).getContents()) if (item != null) result.merge(item.getType(), item.getAmount(), Integer::sum);
-        return result;
+        return ResolvedOutputInventory.count(outputBlock(farm));
+    }
+    private Block outputBlock(FarmLabPlugin.Farm farm) {
+        var p = farm.output(); return lab.world().getBlockAt(p[0], p[1], p[2]);
     }
     private void eachBlock(FarmLabPlugin.Farm farm, java.util.function.Consumer<Block> consumer) {
         var low = farm.destination(); var high = farm.maximum();

@@ -54,6 +54,15 @@ class MobPerformanceWorldTests(unittest.TestCase):
         self.assertEqual(skeleton['size'], [13, 25, 13])
         self.assertTrue((ROOT / 'test-worlds/ppl9-mobs/structures/skeleton.nbt').is_file())
 
+    def test_benchmark_contract_has_safe_position_reset_and_resolved_inventory_accounting(self):
+        source = (ROOT / 'src/farmLab/java/io/github/checkselfy/bakemechanisms/lab/MobPerformanceWorld.java').read_text(encoding='utf-8')
+        lab = (ROOT / 'src/farmLab/java/io/github/checkselfy/bakemechanisms/lab/FarmLabPlugin.java').read_text(encoding='utf-8')
+        build = (ROOT / 'build.gradle.kts').read_text(encoding='utf-8')
+        self.assertIn('Safe benchmark AFK/profile position', source)
+        self.assertIn('ResolvedOutputInventory.count', lab)
+        self.assertIn('profile-rates-per-20-ticks', lab)
+        self.assertIn('mob-performance-v7.txt', build)
+
 
 if __name__ == '__main__':
     unittest.main()

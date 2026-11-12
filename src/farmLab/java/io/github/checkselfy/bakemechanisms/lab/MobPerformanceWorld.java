@@ -38,6 +38,7 @@ import org.bukkit.util.BoundingBox;
 
 /** Builds a compact PPL9-derived zombified-piglin gold-farm benchmark; never mass-registers its farms. */
 final class MobPerformanceWorld {
+    record BenchmarkFarm(String id, int[] output) { }
     private record Manifest(int format, String world, String template, String mob, int default_farms, int maximum_farms, int spacing,
                             int min_spawn_delay, int max_spawn_delay, int spawn_count, int max_nearby_entities) { }
     private record Farm(String id, int x, int z) {
@@ -116,20 +117,23 @@ final class MobPerformanceWorld {
     }
 
     boolean contains(String id) { return farms.stream().anyMatch(farm -> farm.id().equals(id)); }
+    List<BenchmarkFarm> benchmarkFarms() { return farms.stream().map(farm -> new BenchmarkFarm(farm.id(), farm.output())).toList(); }
 
     void list(CommandSender sender) {
         for (var farm : farms) sender.sendMessage(farm.id() + ": GOLD " + coordinates(farm.min()) + " -> LIME "
                 + coordinates(farm.max()) + "; double output chest " + coordinates(farm.output()));
+        sender.sendMessage("Safe benchmark AFK/profile position: " + coordinates(afkPosition())
+                + ". It is outside every mechanism and output-protection buffer.");
     }
 
     void navigate(Player player, String[] args) {
         var farm = farms.stream().filter(candidate -> candidate.id().equals(args[1])).findFirst().orElseThrow();
         if (args.length == 2 && args[0].equals("visit")) {
-            if (!player.teleport(new Location(world, world.getSpawnLocation().getX() + .5, 89,
-                    world.getSpawnLocation().getZ() + .5))) {
+            var afk = afkPosition();
+            if (!player.teleport(new Location(world, afk[0] + .5, afk[1], afk[2] + .5))) {
                 throw new IllegalStateException("Teleport refused by farm protection");
             }
-            player.sendMessage("Shared AFK position for the three-farm benchmark. Stay here to activate every spawner; use the same position in both benchmark phases.");
+            player.sendMessage("Safe shared AFK/profile position for the three-farm benchmark. Stay here to activate every spawner; use the same position in both benchmark phases.");
         } else if (args.length == 3 && args[0].equals("corner")) {
             int[] target = switch (args[2]) {
                 case "1" -> farm.min(); case "2" -> farm.max(); case "output" -> farm.output();
@@ -141,6 +145,11 @@ final class MobPerformanceWorld {
             }
             player.sendMessage("Target block: " + coordinates(target) + ". Select it with the Bake wand, then return with /farmlab visit " + farm.id() + ".");
         } else throw new IllegalArgumentException("Use /farmlab visit <id> or /farmlab corner <id> <1|2|output>");
+    }
+
+    private int[] afkPosition() {
+        var spawn = world.getSpawnLocation();
+        return new int[]{spawn.getBlockX(), spawn.getBlockY(), spawn.getBlockZ()};
     }
 
     private void build(Farm farm) throws Exception {

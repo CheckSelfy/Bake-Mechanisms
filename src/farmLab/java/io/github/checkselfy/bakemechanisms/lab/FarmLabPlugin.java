@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.UUID;
 import org.bukkit.GameMode;
 import org.bukkit.GameRules;
 import org.bukkit.Location;
@@ -280,6 +281,66 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
         }, ticks);
     }
 
+    /** Records the inputs and result of a fixed-tick mob benchmark in a durable, reviewable file. */
+    private void benchmark(CommandSender sender, String label, int ticks) throws Exception {
+        if (!label.matches("[a-zA-Z0-9_-]{1,48}")) throw new IllegalArgumentException("Use a short letters/numbers/dashes label");
+        if (ticks < 20 || ticks > 72000) throw new IllegalArgumentException("Use 20..72000 server ticks");
+        var farms = mobPerformance.benchmarkFarms();
+        var before = new LinkedHashMap<String, Map<String, Integer>>();
+        for (var farm : farms) before.put(farm.id(), printableCounts(worldBlock(mobPerformanceWorld(), farm.output())));
+        int start = getServer().getCurrentTick();
+        var rates = benchmarkRates(mobPerformanceWorld().getUID());
+        sender.sendMessage("Benchmark " + label + " started for " + ticks + " game ticks at the shared safe AFK position. Spark artifacts already present under plugins/spark are indexed in the result.");
+        getServer().getScheduler().runTaskLater(this, () -> {
+            try {
+                var record = new YamlConfiguration();
+                record.set("label", label); record.set("world", mobPerformanceWorld().getUID().toString());
+                record.set("start-game-tick", start); record.set("end-game-tick", getServer().getCurrentTick());
+                record.set("requested-game-ticks", ticks); record.set("elapsed-game-ticks", getServer().getCurrentTick() - start);
+                record.set("safe-afk-profile-position", List.of(mobPerformanceWorld().getSpawnLocation().getBlockX(), 89, mobPerformanceWorld().getSpawnLocation().getBlockZ()));
+                record.set("initial-inventory", before);
+                var after = new LinkedHashMap<String, Map<String, Integer>>();
+                for (var farm : farms) after.put(farm.id(), printableCounts(worldBlock(mobPerformanceWorld(), farm.output())));
+                record.set("final-inventory", after); record.set("profile-rates-per-20-ticks", rates);
+                record.set("spark-artifacts", sparkArtifacts());
+                var path = getDataFolder().toPath().resolve("benchmarks/" + System.currentTimeMillis() + "-" + label + ".yml");
+                Files.createDirectories(path.getParent()); record.save(path.toFile());
+                sender.sendMessage("Benchmark recorded: " + path.getFileName());
+            } catch (Exception error) { sender.sendMessage("Benchmark recording failed: " + error.getMessage()); }
+        }, ticks);
+    }
+
+    private World mobPerformanceWorld() { return getServer().getWorld("farm_lab_mob_performance"); }
+    private org.bukkit.block.Block worldBlock(World target, int[] position) { return Objects.requireNonNull(target).getBlockAt(position[0], position[1], position[2]); }
+    private Map<String, Integer> printableCounts(org.bukkit.block.Block output) {
+        var counts = new LinkedHashMap<String, Integer>();
+        ResolvedOutputInventory.count(output).forEach((material, count) -> counts.put(material.getKey().toString(), count));
+        return counts;
+    }
+    private Map<String, Object> benchmarkRates(UUID worldId) {
+        var result = new LinkedHashMap<String, Object>();
+        var storage = new io.github.checkselfy.bakemechanisms.storage.FarmStorage(
+                getServer().getPluginManager().getPlugin("BakeMechanisms").getDataFolder().toPath().resolve("farms"));
+        for (var farm : storage.loadAll()) if (farm.farm().mechanism().min().worldId().equals(worldId)) {
+            if (farm.farm().profile() == null) { result.put(farm.farm().id().toString(), Map.of()); continue; }
+            var outputs = new java.util.ArrayList<Map<String, Double>>();
+            for (var output : farm.farm().profile().outputs()) {
+                var formatted = new LinkedHashMap<String, Double>();
+                output.forEach((material, rate) -> formatted.put(material.getKey().toString(), rate));
+                outputs.add(formatted);
+            }
+            result.put(farm.farm().id().toString(), outputs);
+        }
+        return result;
+    }
+    private List<String> sparkArtifacts() throws java.io.IOException {
+        var spark = getServer().getPluginsFolder().toPath().resolve("spark");
+        if (!Files.isDirectory(spark)) return List.of();
+        try (var paths = Files.walk(spark, 2)) {
+            return paths.filter(Files::isRegularFile).map(path -> spark.relativize(path).toString()).sorted().toList();
+        }
+    }
+
     public Location location(int[] p) { return new Location(world, p[0], p[1], p[2]); }
 
     /** The lab is this server's only playable world: a player arriving anywhere else is sent to its centre. */
@@ -304,6 +365,8 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                 mobs.check(sender);
             } else if (args.length == 3 && args[0].equals("compare")) {
                 compare(sender, args[1], Integer.parseInt(args[2]));
+            } else if (args.length == 3 && args[0].equals("benchmark")) {
+                benchmark(sender, args[1], Integer.parseInt(args[2]));
             } else if (sender instanceof Player player) {
                 if (args.length == 1 && (args[0].equals("fast") || args[0].equals("normal"))) {
                     int speed = args[0].equals("fast") ? 30 : 3;

@@ -7,4 +7,4 @@ description: Disposable local farm lab; never install on a public gameplay serve
 commands:
   farmlab:
     description: Visit extracted farms, prepare creative selection, and record manual observations.
-    usage: /farmlab setup | list | visit <id> | corner <id> <1|2|output> | compare <cactus|cane> <ticks> | survival | creative | fast | normal | note <text> | stop
+    usage: /farmlab setup | list | visit <id> | corner <id> <1|2|output> | compare <cactus|cane> <ticks> | benchmark <label> <ticks> | survival | creative | fast | normal | note <text> | stop

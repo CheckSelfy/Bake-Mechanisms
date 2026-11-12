@@ -193,13 +193,22 @@ tasks.register("resetFarmLab") {
             }
         }
         val labData = serverDir.resolve("plugins/BakeFarmLab")
-        val labWorld = labData.resolve("world-uid.txt").takeIf { it.isFile }?.readText()?.trim()
+        // The crop and mob-performance labs are separate generated worlds.  Keep both
+        // ids: otherwise resetting after the mob benchmark has registered farms leaves
+        // its old registrations behind.
+        val labWorlds = buildSet {
+            labData.resolve("world-uid.txt").takeIf { it.isFile }?.readText()?.trim()
+                ?.takeIf { it.isNotEmpty() }?.let(::add)
+            labData.resolve("mob-performance-v7.txt").takeIf { it.isFile }?.readLines()
+                ?.firstOrNull { it.startsWith("world=") }?.substringAfter('=')?.trim()
+                ?.takeIf { it.isNotEmpty() }?.let(::add)
+        }
         val farms = serverDir.resolve("plugins/BakeMechanisms/farms")
         farms.listFiles { file -> file.isDirectory }.orEmpty().forEach { farm ->
             val world = farm.resolve("farm.yml").takeIf { it.isFile }?.readLines()
                 ?.firstOrNull { it.startsWith("world:") }?.substringAfter(":")?.trim()?.trim('\'', '"')
             // Without a recorded lab world, every registration is treated as the lab's: this is a local test server.
-            if (labWorld == null || world == null || world == labWorld) {
+            if (labWorlds.isEmpty() || world == null || world in labWorlds) {
                 logger.lifecycle("Deleting farm registration ${farm.name} (world $world).")
                 farm.deleteRecursively()
             }
