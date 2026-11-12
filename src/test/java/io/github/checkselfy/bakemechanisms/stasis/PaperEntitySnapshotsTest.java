@@ -97,8 +97,10 @@ class PaperEntitySnapshotsTest {
         var passenger = entity(EntityType.ZOMBIE);
         when(server.getEntity(root.getUniqueId())).thenReturn(root);
         when(server.getEntity(passenger.getUniqueId())).thenReturn(passenger);
+        removable(root);
+        removable(passenger);
         var group = new SnapshotPayload.EntityGroup(root.getUniqueId(), List.of(root.getUniqueId(), passenger.getUniqueId()), new byte[] { 1 });
-        snapshots.remove(List.of(group));
+        snapshots.remove(world, region, List.of(group));
         verify(root).remove();
         verify(passenger).remove();
     }
@@ -117,7 +119,7 @@ class PaperEntitySnapshotsTest {
         var id = UUID.randomUUID();
         when(cart.getInventory()).thenReturn(inventory);
         when(server.getEntity(id)).thenReturn(cart);
-        snapshots.remove(List.of(new SnapshotPayload.EntityGroup(id, List.of(id), new byte[] { 1 })));
+        snapshots.remove(world, region, List.of(new SnapshotPayload.EntityGroup(id, List.of(id), new byte[] { 1 })));
         var order = inOrder(inventory, cart);
         order.verify(inventory).clear();
         order.verify(cart).remove();
@@ -270,6 +272,7 @@ class PaperEntitySnapshotsTest {
         var cow = mock(org.bukkit.entity.Cow.class);
         initialize(cow, EntityType.COW);
         when(cow.isValid()).thenReturn(false);
+        when(cow.isDead()).thenReturn(true);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
         assertTrue(snapshots.capture(world, region).isEmpty());
         verifyNoInteractions(serialization);
@@ -304,6 +307,135 @@ class PaperEntitySnapshotsTest {
         assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
         verify(wolf, never()).remove();
         verify(restored, never()).spawnAt(any(), any());
+    }
+
+    @Test void dyingPassengerMakesTheTreeRetryableWithoutSerializing() {
+        var chicken = entity(EntityType.CHICKEN);
+        var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
+        mount(chicken, rider);
+        when(rider.isValid()).thenReturn(false);
+        when(rider.isDead()).thenReturn(true);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken, rider));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void dyingVehicleMakesTheTreeRetryable() {
+        var chicken = entity(EntityType.CHICKEN);
+        var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
+        mount(chicken, rider);
+        when(chicken.isValid()).thenReturn(false);
+        when(chicken.isDead()).thenReturn(true);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(rider));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void entityNotYetTrackedByTheWorldIsRetryable() {
+        var piglin = entity(EntityType.ZOMBIFIED_PIGLIN);
+        when(piglin.isValid()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(piglin));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void riderThatItsVehicleDoesNotListIsRetryable() {
+        var chicken = entity(EntityType.CHICKEN);
+        var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(rider, chicken));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void passengerWhoseVehicleLinkDisagreesIsRetryable() {
+        var chicken = entity(EntityType.CHICKEN);
+        var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void nativeSerializationRefusalIsRetryable() {
+        var chicken = entity(EntityType.CHICKEN);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS))
+                .thenThrow(new IllegalArgumentException("Cannot serialize invalid or non-persistent entity"));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+    }
+
+    @Test void jockeyIsCapturedByWhoRidesWhomNotByTheRidersMomentaryPosition() {
+        var chicken = entity(EntityType.CHICKEN);
+        var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
+        mount(chicken, rider);
+        // Just mounted: the vehicle has not positioned its rider yet, so live and loaded coordinates differ.
+        when(rider.getLocation()).thenReturn(new org.bukkit.Location(world, 3, 70, 3));
+        var chickenCopy = entity(EntityType.CHICKEN);
+        var riderCopy = entity(EntityType.ZOMBIFIED_PIGLIN);
+        var chickenId = chicken.getUniqueId();
+        when(chickenCopy.getUniqueId()).thenReturn(chickenId);
+        var riderId = rider.getUniqueId();
+        when(riderCopy.getUniqueId()).thenReturn(riderId);
+        mount(chickenCopy, riderCopy);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(rider, chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
+        var groups = snapshots.capture(world, region);
+        assertEquals(1, groups.size());
+        assertEquals(List.of(chicken.getUniqueId(), rider.getUniqueId()), groups.getFirst().members());
+    }
+
+    @Test void passengerMissingFromTheNativeCopyIsRetryable() {
+        var chicken = entity(EntityType.CHICKEN);
+        var rider = entity(EntityType.ZOMBIFIED_PIGLIN);
+        mount(chicken, rider);
+        var chickenCopy = entity(EntityType.CHICKEN);
+        var chickenId = chicken.getUniqueId();
+        when(chickenCopy.getUniqueId()).thenReturn(chickenId);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+    }
+
+    @Test void standaloneCorpseIsSkippedByCaptureAndDiscardedWithTheOriginals() {
+        var live = mock(org.bukkit.entity.PigZombie.class);
+        initialize(live, EntityType.ZOMBIFIED_PIGLIN);
+        var corpse = mock(org.bukkit.entity.PigZombie.class);
+        initialize(corpse, EntityType.ZOMBIFIED_PIGLIN);
+        when(corpse.isValid()).thenReturn(false);
+        when(corpse.isDead()).thenReturn(true);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(corpse, live));
+        when(serialization.serializeEntity(live, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(live);
+        var groups = snapshots.capture(world, region);
+        assertEquals(List.of(live.getUniqueId()), groups.getFirst().members());
+        verify(serialization, never()).serializeEntity(eq(corpse), any());
+        removable(live);
+        when(server.getEntity(live.getUniqueId())).thenReturn(live);
+        snapshots.remove(world, region, groups);
+        verify(live).remove();
+        verify(corpse).remove();
+    }
+
+    @Test void removalFailsWhenASavedOriginalSurvives() {
+        var piglin = entity(EntityType.ZOMBIFIED_PIGLIN);
+        when(server.getEntity(piglin.getUniqueId())).thenReturn(piglin);
+        var group = new SnapshotPayload.EntityGroup(piglin.getUniqueId(), List.of(piglin.getUniqueId()), new byte[] { 1 });
+        assertThrows(IllegalStateException.class, () -> snapshots.remove(world, region, List.of(group)));
+    }
+
+    private void mount(Entity vehicle, Entity rider) {
+        when(vehicle.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(vehicle);
+    }
+
+    /** Mirrors Paper: a removed entity is no longer valid. */
+    private static void removable(Entity entity) {
+        var alive = new java.util.concurrent.atomic.AtomicBoolean(true);
+        when(entity.isValid()).thenAnswer(invocation -> alive.get());
+        doAnswer(invocation -> { alive.set(false); return null; }).when(entity).remove();
     }
 
     private Entity entity(EntityType type) {

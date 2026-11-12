@@ -67,8 +67,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                                 getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", profilingError);
                                 getServer().shutdown();
                             } else SlimeFillerCheck.run(this, fillerError -> {
-                                if(fillerError!=null) getLogger().log(Level.SEVERE,"BLOCK_STASIS_SMOKE_FAILED",fillerError);
-                                getServer().shutdown();
+                                if (fillerError != null) {
+                                    getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", fillerError);
+                                    getServer().shutdown();
+                                } else NativePiglinFarmCheck.run(this, piglinError -> {
+                                    if (piglinError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", piglinError);
+                                    getServer().shutdown();
+                                });
                             });
                         });
                     });
