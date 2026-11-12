@@ -142,6 +142,8 @@ final class MobPerformanceWorld {
         } else throw new IllegalArgumentException("Use /farmlab visit <id> or /farmlab corner <id> <1|2|output>");
     }
 
+    int[] afk() { return afkPosition(); }
+
     private int[] afkPosition() {
         var spawn = world.getSpawnLocation();
         return new int[]{spawn.getBlockX(), spawn.getBlockY(), spawn.getBlockZ()};
