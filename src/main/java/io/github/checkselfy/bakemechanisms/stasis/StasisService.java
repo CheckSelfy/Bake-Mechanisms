@@ -4,20 +4,29 @@ import io.github.checkselfy.bakemechanisms.marking.FarmRegistry;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.MarkedFarm;
 import io.github.checkselfy.bakemechanisms.marking.FarmRegistry.State;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Owns snapshot lifecycle and tells {@link StasisProduction} when the original mechanism leaves or returns.
  * Server thread only.
+ *
+ * <p>Exactly one production stream exists per farm while its complete filler stands in for the mechanism: it is
+ * started once (on entry, on recovery, or once a failed restore puts the filler back after a failed entry never
+ * started it), paused while the original is being placed and finished once the original is back. It is never
+ * started twice, and never while any part of the original may still be in place.
  */
 public final class StasisService {
     private final FarmRegistry registry;
     private final StasisWorld world;
     private final SnapshotStore store;
     private final Map<UUID, SavedSnapshot> active = new LinkedHashMap<>();
+    /** Farms whose production stream was started and not yet finished. */
+    private final Set<UUID> producing = new HashSet<>();
     private final StasisProduction production;
     private final FillerStyle filler;
 
@@ -51,7 +60,7 @@ public final class StasisService {
             registry.recoverStasis(snapshot.farm());
             active.put(snapshot.farm().id(), snapshot);
         }
-        for (var snapshot : active.values()) production.start(snapshot.farm());
+        for (var snapshot : active.values()) startProduction(snapshot.farm());
         var orphaned = registry.all().stream()
                 .filter(farm -> farm.state() == State.STASIS && !active.containsKey(farm.id()))
                 .map(MarkedFarm::id).toList();
@@ -83,11 +92,11 @@ public final class StasisService {
             world.fill(farm.mechanism(),snapshot.filler());
         } catch (RuntimeException error) {
             // Only a complete filler stands in for the mechanism; a remaining original must not run alongside.
-            if (refill(farm, error)) production.start(stasisFarm);
+            if (refill(farm, error)) startProduction(stasisFarm);
             throw new IllegalArgumentException("Ошибка замены механизма. Снимок сохранён; используйте /bake unstasis "
                     + farmId + ".", error);
         }
-        production.start(stasisFarm);
+        startProduction(stasisFarm);
     }
 
     public void restore(UUID farmId, UUID actorId) {
@@ -98,20 +107,39 @@ public final class StasisService {
         }
         requireNoPlayers(farm);
         world.validateRestore(farm, snapshot.data());
-        production.pause(farmId);
+        boolean started = producing.contains(farmId);
+        if (started) production.pause(farmId);
         try {
             world.restore(farm, snapshot.data());
             store.deactivate(farmId);
         } catch (IOException | RuntimeException error) {
             // Production stays paused while any part of the original remains in place.
-            if (refill(farm, error)) production.resume(farmId);
+            if (refill(farm, error)) {
+                // A failed entry whose rollback also failed never started production; the filler is complete now.
+                if (started) production.resume(farmId);
+                else startProduction(farm);
+            }
             throw new IllegalArgumentException("Восстановление не завершено. Снимок и защита сохранены; повторите команду.", error);
         }
         // Normal operation: the leftover buffer is saved before the profile, and emulation.dat with it, is
         // dropped. A process crash between deactivate and this point is outside the MVP guarantees.
-        production.finish(farmId);
+        if (producing.remove(farmId)) production.finish(farmId);
         registry.markNeedsProfiling(farmId);
         active.remove(farmId);
+    }
+
+    /**
+     * Starts the farm's only production stream. A farm leaves READY only through this service, so a stale entry can
+     * remain only when another instance restored it (a restart); the emulation itself rejects a second running stream.
+     */
+    private void startProduction(MarkedFarm farm) {
+        producing.add(farm.id());
+        production.start(farm);
+    }
+
+    /** Whether the farm's production stream runs or is paused for a restore. */
+    public boolean producing(UUID farmId) {
+        return producing.contains(farmId);
     }
 
     private void requireNoPlayers(MarkedFarm farm) {
