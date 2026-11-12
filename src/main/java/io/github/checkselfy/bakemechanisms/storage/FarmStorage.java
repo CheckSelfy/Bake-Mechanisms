@@ -52,6 +52,12 @@ public final class FarmStorage implements EmulationStore {
     private static final int DRAIN_FORMAT = 2;
     private static final int DRAIN_MAGIC = 0x4452414e; // "DRAN"
     private static final int FARM_FORMAT = 2;
+    /**
+     * {@code emulation.dat} stores only fractional accumulators in [0, 1) and whole buffered items per output, i.e.
+     * what was produced but not yet placed. Neither depends on how elapsed ticks are counted, so counting game ticks
+     * instead of scheduler ticks (#12) kept this format: files written before that fix load and continue unchanged.
+     * Bump the format and migrate older files whenever a change alters the meaning of a stored value.
+     */
     private static final int EMULATION_FORMAT = 2;
     private static final int EMULATION_MAGIC = 0x42414b45; // "BAKE"
 
