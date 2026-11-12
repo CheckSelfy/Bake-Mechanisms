@@ -212,6 +212,9 @@ public final class PaperEntitySnapshots {
             if (entity instanceof InventoryHolder holder) holder.getInventory().clear();
         }
         members.forEach(Entity::remove);
+        for (var entity : members) {
+            if (entity.isValid()) throw new IllegalStateException("Сервер не удалил оригинал " + entity.getType());
+        }
     }
 
     public void spawn(List<Entity> roots) {

@@ -87,9 +87,12 @@ public final class StasisService {
         // Protect the entire region before starting a possibly partial replacement.
         active.put(farmId, snapshot);
         var stasisFarm = registry.markStasis(farmId);
+        // Capture, save, removal and filler placement run in this one server-thread call: no tick happens in between,
+        // so no entity can spawn, die, mount or move between the snapshot and the removal of its originals.
         try {
             world.removeEntities(farm, snapshot.data());
             world.fill(farm.mechanism(),snapshot.filler());
+            world.verifyHandoff(farm, snapshot.data());
         } catch (RuntimeException error) {
             // Only a complete filler stands in for the mechanism; a remaining original must not run alongside.
             if (refill(farm, error)) startProduction(stasisFarm);

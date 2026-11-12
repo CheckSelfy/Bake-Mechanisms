@@ -218,6 +218,22 @@ public final class PaperStasisWorld implements StasisWorld {
         entities.remove(SnapshotPayload.decode(data).groups());
     }
 
+    @Override public void verifyHandoff(MarkedFarm farm, byte[] data) {
+        for (var group : SnapshotPayload.decode(data).groups()) for (var id : group.members()) {
+            var original = plugin.getServer().getEntity(id);
+            if (original != null && original.isValid()) {
+                throw new IllegalStateException("Оригинал сущности " + original.getType() + " " + id + " не удалён.");
+            }
+        }
+        var world = world(farm.mechanism());
+        for (var entity : world.getNearbyEntities(PaperProfilingWorld.box(farm.mechanism()))) {
+            if (entity.isValid() && !(entity instanceof org.bukkit.entity.Player)) {
+                throw new IllegalStateException("После замены в механизме осталась сущность " + entity.getType()
+                        + " " + entity.getUniqueId() + ", которой нет в снимке.");
+            }
+        }
+    }
+
     private World world(Cuboid region) {
         var world = plugin.getServer().getWorld(region.min().worldId());
         if (world == null) throw new IllegalStateException("Мир фермы не загружен.");

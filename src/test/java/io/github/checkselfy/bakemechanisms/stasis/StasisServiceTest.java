@@ -325,6 +325,27 @@ class StasisServiceTest {
     }
 
     @Test
+    void survivingOriginalAfterTheFillerIsTreatedAsAFailedReplacementAndRemovedAgain() {
+        var production = mock(StasisProduction.class);
+        var producing = new StasisService(registry, world, store, production);
+        var farm = ready();
+        when(world.capture(farm)).thenReturn(new byte[] { 1 });
+        doThrow(new IllegalStateException("Оригинал сущности ZOMBIFIED_PIGLIN не удалён.")).when(world)
+                .verifyHandoff(any(), any());
+        var error = assertThrows(IllegalArgumentException.class, () -> producing.enter(farm.id(), creator));
+        assertTrue(error.getMessage().contains("unstasis"), error.getMessage());
+        var order = inOrder(world, production);
+        order.verify(world).removeEntities(any(), aryEq(new byte[] { 1 }));
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class));
+        order.verify(world).verifyHandoff(any(), aryEq(new byte[] { 1 }));
+        // Rollback removes the snapshot members again before the filler and production stand in for them.
+        order.verify(world).removeEntities(any(), aryEq(new byte[] { 1 }));
+        order.verify(world).fill(eq(farm.mechanism()), any(FillerStyle.class));
+        order.verify(production).start(any());
+        assertEquals(State.STASIS, registry.requireCreator(farm.id(), creator).state());
+    }
+
+    @Test
     void repeatedFailedEntryAttemptsNeverStartProduction() {
         var production = mock(StasisProduction.class);
         var producing = new StasisService(registry, world, store, production);

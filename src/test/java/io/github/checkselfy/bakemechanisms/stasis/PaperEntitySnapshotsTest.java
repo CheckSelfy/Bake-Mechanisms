@@ -98,9 +98,18 @@ class PaperEntitySnapshotsTest {
         when(server.getEntity(root.getUniqueId())).thenReturn(root);
         when(server.getEntity(passenger.getUniqueId())).thenReturn(passenger);
         var group = new SnapshotPayload.EntityGroup(root.getUniqueId(), List.of(root.getUniqueId(), passenger.getUniqueId()), new byte[] { 1 });
+        when(root.isValid()).thenReturn(false);
+        when(passenger.isValid()).thenReturn(false);
         snapshots.remove(List.of(group));
         verify(root).remove();
         verify(passenger).remove();
+    }
+
+    @Test void originalThatSurvivesRemovalFailsTheHandoff() {
+        var root = entity(EntityType.ZOMBIFIED_PIGLIN);
+        when(server.getEntity(root.getUniqueId())).thenReturn(root);
+        var group = new SnapshotPayload.EntityGroup(root.getUniqueId(), List.of(root.getUniqueId()), new byte[] { 1 });
+        assertThrows(IllegalStateException.class, () -> snapshots.remove(List.of(group)));
     }
 
     @Test void cyclicVehicleLinksAreRejected() {
