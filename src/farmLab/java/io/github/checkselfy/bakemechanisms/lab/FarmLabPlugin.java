@@ -294,8 +294,8 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                 + " safe AFK pad for both phases; the bundled Spark profiler is saved to plugins/spark when available.");
     }
 
-    World mobPerformanceWorld() { return getServer().getWorld("farm_lab_mob_performance"); }
-    MobPerformanceWorld mobPerformance() { return mobPerformance; }
+    public World mobPerformanceWorld() { return getServer().getWorld("farm_lab_mob_performance"); }
+    public MobPerformanceWorld mobPerformance() { return mobPerformance; }
 
     public Location location(int[] p) { return new Location(world, p[0], p[1], p[2]); }
 

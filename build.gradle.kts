@@ -281,7 +281,7 @@ tasks.check { dependsOn(tasks.named(farmLab.classesTaskName)) }
 tasks.register<Jar>("farmLabJar") {
     group = "verification"
     archiveFileName.set("bake-farm-lab.jar")
-    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*", "**/SlimeGallery*") }
+    from(farmLab.output) { exclude("**/FarmLabReviewPlugin*", "**/MobPerformanceReviewPlugin*", "**/SlimeGallery*") }
     from("test-worlds/ppl9") { into("fixtures"); exclude("README.md") }
     from("test-worlds/ppl9-mobs") { into("mob-fixtures"); exclude("README.md") }
     from("test-worlds/ppl9-mobs-performance") { into("mob-performance-fixtures"); exclude("README.md") }
@@ -291,6 +291,14 @@ tasks.register<Jar>("slimeGalleryJar") {
     archiveFileName.set("bake-slime-gallery.jar")
     from(farmLab.output) { include("**/SlimeGallery*") }
     from("src/farmLab/slime-plugin.yml") { rename { "plugin.yml" } }
+}
+
+tasks.register<Jar>("mobPerformanceReviewJar") {
+    group = "verification"
+    description = "Headless #12 review of the three-farm zombified-piglin benchmark (scripts/farm-lab.py mob-review)."
+    archiveFileName.set("bake-mob-performance-review.jar")
+    from(farmLab.output) { include("**/MobPerformanceReviewPlugin*") }
+    from("src/farmLab/mob-review-plugin.yml") { rename { "plugin.yml" } }
 }
 
 tasks.register<Jar>("farmLabReviewJar") {

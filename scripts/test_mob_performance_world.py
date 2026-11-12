@@ -84,6 +84,19 @@ class MobPerformanceWorldTests(unittest.TestCase):
         self.assertIn('mob-performance-v', build)
         self.assertIn('BakeFarmLab-worlds.txt', build)
 
+    def test_headless_review_runs_reset_between_processes_and_forbids_operator_workarounds(self):
+        review = (ROOT / 'src/farmLab/java/io/github/checkselfy/bakemechanisms/lab/MobPerformanceReviewPlugin.java').read_text(encoding='utf-8')
+        script = (ROOT / 'scripts/farm-lab.py').read_text(encoding='utf-8')
+        build = (ROOT / 'build.gradle.kts').read_text(encoding='utf-8')
+        for forbidden in ('"tick freeze"', '"tick step"', '"kill"', '"persist"', '"dismount"'):
+            self.assertIn(forbidden, review)
+        self.assertIn('stale registrations survived resetFarmLab', review)
+        self.assertIn('UPDATES = 60', review)
+        self.assertLess(script.index("run_process('MOB_REVIEW_SEEDED'"), script.index("'resetFarmLab'"))
+        self.assertLess(script.index("'resetFarmLab'"), script.index("run_process('MOB_REVIEW_PASSED'"))
+        # The review plugin lives in its own jar; the lab jar must not also carry it.
+        self.assertIn('"**/MobPerformanceReviewPlugin*", "**/SlimeGallery*")', build)
+
 
 class ResetFarmLabTests(unittest.TestCase):
     """Runs the real Gradle task against a throwaway server directory."""

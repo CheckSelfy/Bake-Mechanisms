@@ -37,8 +37,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 
 /** Builds a compact PPL9-derived zombified-piglin gold-farm benchmark; never mass-registers its farms. */
-final class MobPerformanceWorld {
-    record BenchmarkFarm(String id, int[] output) { }
+public final class MobPerformanceWorld {
+    public record BenchmarkFarm(String id, int[] output) { }
     private record Manifest(int format, String world, String template, String mob, int default_farms, int maximum_farms, int spacing,
                             int min_spawn_delay, int max_spawn_delay, int spawn_count, int max_nearby_entities) { }
     private record Farm(String id, int x, int z) {
@@ -113,7 +113,18 @@ final class MobPerformanceWorld {
     }
 
     boolean contains(String id) { return farms.stream().anyMatch(farm -> farm.id().equals(id)); }
-    List<BenchmarkFarm> benchmarkFarms() { return farms.stream().map(farm -> new BenchmarkFarm(farm.id(), farm.output())).toList(); }
+    public List<BenchmarkFarm> benchmarkFarms() { return farms.stream().map(farm -> new BenchmarkFarm(farm.id(), farm.output())).toList(); }
+
+    /** Marking corners (gold and lime blocks) and the output chest half a player selects with the wand. */
+    public record Geometry(String id, int[] min, int[] max, int[] output) { }
+
+    public List<Geometry> benchmarkFarmGeometry() {
+        return farms.stream().map(farm -> new Geometry(farm.id(), farm.min(), farm.max(), farm.output())).toList();
+    }
+
+    public Geometry geometry(String id) {
+        return benchmarkFarmGeometry().stream().filter(farm -> farm.id().equals(id)).findFirst().orElseThrow();
+    }
 
     void list(CommandSender sender) {
         for (var farm : farms) sender.sendMessage(farm.id() + ": GOLD " + coordinates(farm.min()) + " -> LIME "
@@ -143,7 +154,7 @@ final class MobPerformanceWorld {
         } else throw new IllegalArgumentException("Use /farmlab visit <id> or /farmlab corner <id> <1|2|output>");
     }
 
-    int[] afk() { return afkPosition(); }
+    public int[] afk() { return afkPosition(); }
 
     private int[] afkPosition() {
         var spawn = world.getSpawnLocation();

@@ -10,4 +10,21 @@ Use `python scripts/farm-lab.py run`, then `/farmlab visit mobperf01`, `/farmlab
 
 After the three farms are in the intended phase, run `/farmlab benchmark <label> <ticks>` while standing on that pad. The window is counted in game ticks of the benchmark world, so a `/tick freeze` cannot stretch it; scheduler ticks are recorded beside them (`server-ticks-without-game-tick` is non-zero only if the game was frozen). The command writes `plugins/BakeFarmLab/benchmarks/*.yml` with start/end game time, wall time, TPS, the MSPT distribution of every tick in the window (mean, median, p95, max), the players and their positions, the farms' states, initial and final resolved-double-chest inventories and their delta, persisted profile rates, the AFK position, and the Spark artifacts. When the server has the bundled Spark, the command runs `spark profiler start` and `spark profiler stop --save-to-file` itself, so the profile is saved under `plugins/spark` and never uploaded; `spark-artifacts-created` lists the new files.
 
+## Headless review
+
+`python scripts/farm-lab.py mob-review --mode smoke --accept-eula` drives the whole lab without an operator, on a fresh server directory (`run/farm-lab-mob-smoke`) with a non-OP headless client:
+
+1. The first server process registers all three plots through the wand and `/bake register`, records them in `plugins/BakeMobPerformanceReview/seeded.yml` (`MOB_REVIEW_SEEDED`) and stops.
+2. `gradlew resetFarmLab -PfarmLabServer=<server>` deletes the lab worlds and their registrations.
+3. The second process checks that the world was regenerated and that no registration from step 1 survived, then registers the three plots again (`MOB_REVIEW_REGISTERED_AFTER_RESET`).
+4. After a 600-tick warm-up of the native originals, the client profiles all three in parallel from the safe AFK pad. The review checks that the client stands outside every protection belt.
+5. `/bake stasis` puts all three into `STASIS`. There are no cleanup commands: pistons and mobs in transition are retried by the plugin itself. The review then restores the farms with `/bake unstasis` and prints `MOB_REVIEW_PASSED`.
+
+`--mode acceptance` (server directory `run/farm-lab-mob-acceptance`) is the #12 end-to-end scenario. It adds:
+- a 1,200-game-tick benchmark of the originals before profiling, and one of the farms in stasis, both from the same pad;
+- the exact production check over the stasis window (every stored fraction and buffer, counted through the resolved double chests);
+- a comparison of the two benchmarks: no freeze, the same player position, at least 19.5 TPS in stasis and a lower median MSPT.
+
+The result is written to `plugins/BakeMobPerformanceReview/acceptance-result.yml`. `--evidence <dir>` copies the result, the benchmark records, the review log lines and the locally saved Spark profiles there. While the review runs, `/tick freeze`/`step`, `/kill`, `/data … persist…` and `/ride … dismount` fail it, whoever issues them.
+
 This world is a benchmark input, not a long-running automated test. Structural checks and compilation are sufficient when changing it; run the measurement protocol in [performance.md](../../docs/testing/performance.md) when an operator is ready to collect MSPT and production data.

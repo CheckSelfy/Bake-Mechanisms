@@ -28,7 +28,7 @@ import org.bukkit.scheduler.BukkitTask;
  * sample. Output is counted through the resolved double-chest inventory, and the bundled Spark profiler is started
  * and stopped with {@code --save-to-file} (never uploaded) when the server has it.
  */
-final class MobBenchmark {
+public final class MobBenchmark {
     private final JavaPlugin plugin;
     private final World world;
     private final List<MobPerformanceWorld.BenchmarkFarm> farms;
@@ -58,7 +58,7 @@ final class MobBenchmark {
         this.failed = failed;
     }
 
-    static void run(JavaPlugin plugin, World world, List<MobPerformanceWorld.BenchmarkFarm> farms, int[] afk,
+    public static void run(JavaPlugin plugin, World world, List<MobPerformanceWorld.BenchmarkFarm> farms, int[] afk,
                     String label, int gameTicks, Consumer<Path> recorded, Consumer<Exception> failed) throws IOException {
         if (!label.matches("[a-zA-Z0-9_-]{1,48}")) throw new IllegalArgumentException("Use a short letters/numbers/dashes label");
         if (gameTicks < 20 || gameTicks > 72000) throw new IllegalArgumentException("Use 20..72000 game ticks");
