@@ -71,8 +71,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                                     getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", fillerError);
                                     getServer().shutdown();
                                 } else EmulationRateCheck.run(this, rateError -> {
-                                    if (rateError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", rateError);
-                                    getServer().shutdown();
+                                    if (rateError != null) {
+                                        getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", rateError);
+                                        getServer().shutdown();
+                                    } else FullDoubleChestCheck.run(this, fullError -> {
+                                        if (fullError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", fullError);
+                                        getServer().shutdown();
+                                    });
                                 });
                             });
                         });

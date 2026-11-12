@@ -123,6 +123,33 @@ class Gold1RateRegressionTest {
         assertEquals(uninterrupted.items(doubleChest), world.items(doubleChest));
     }
 
+    @Test
+    void fullDoubleChestBoundsTheBufferPausesProductionAndResumesWithoutReplayOrMultiplication() {
+        var service = service(EmulationSettings.DEFAULT);
+        world.outputs.put(doubleChest, new EnumMap<>(Material.class));
+        world.outputs.get(doubleChest).put(Material.STONE, 54 * 64);
+        world.capacity.put(doubleChest, 54 * 64);
+        service.start(farm, EmulationState.EMPTY);
+        int largestFlesh = 0;
+        int largestChicken = 0;
+        for (int tick = 0; tick < 10_000; tick++) {
+            service.tick();
+            var buffer = store.emulation.get(farm.id()) == null ? Map.<Material, Integer>of()
+                    : store.emulation.get(farm.id()).outputs().getFirst().buffer();
+            largestFlesh = Math.max(largestFlesh, buffer.getOrDefault(Material.ROTTEN_FLESH, 0));
+            largestChicken = Math.max(largestChicken, buffer.getOrDefault(Material.CHICKEN, 0));
+        }
+        assertEquals(Map.of(Material.STONE, 54 * 64), world.items(doubleChest), "a full chest accepts nothing");
+        assertEquals(Map.of(Material.ROTTEN_FLESH, 2), store.emulation.get(farm.id()).outputs().getFirst().buffer(),
+                "only the first update's output waits; 499 paused updates produced nothing");
+        assertTrue(largestFlesh <= 3 && largestChicken <= 1, "buffer exceeded one update");
+
+        world.outputs.get(doubleChest).clear();
+        for (int tick = 0; tick < 200; tick++) service.tick();
+        // 1 update before the chest filled + 10 after it was freed: 11 x 2.5028 = 27.53, 11 x 0.1006 = 1.106.
+        assertEquals(Map.of(Material.ROTTEN_FLESH, 27, Material.CHICKEN, 1), world.items(doubleChest));
+    }
+
     private StasisEmulationService service(EmulationSettings settings) {
         return new StasisEmulationService(world, tickets, settings, store);
     }
