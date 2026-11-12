@@ -59,15 +59,22 @@ final class MobPerformanceWorld {
             manifest = new Gson().fromJson(input, Manifest.class);
         }
         if (manifest.format() != 1 || !manifest.template().equals("skeleton") || !manifest.mob().equals("zombified_piglin") || manifest.default_farms() < 1
-                || manifest.default_farms() > manifest.maximum_farms() || manifest.spacing() < 16
+                || manifest.default_farms() > manifest.maximum_farms() || manifest.spacing() < MIN_SPACING
                 || manifest.min_spawn_delay() < 1 || manifest.max_spawn_delay() < manifest.min_spawn_delay()
                 || manifest.spawn_count() < 1 || manifest.max_nearby_entities() < manifest.spawn_count()) {
             throw new IllegalStateException("Unknown mob-performance fixture manifest");
         }
     }
 
+    /**
+     * A 13-block mechanism, its profiling protection belt on both sides and nothing shared: the belts of
+     * neighbouring farms must not overlap, or {@code ProfilingService} refuses to profile them at the same time.
+     * The v7 lab used 16, so its belts shared one column and only one farm could be profiled at a time.
+     */
+    static final int MIN_SPACING = 13 + 2 * ProfilingIsolation.MARGIN;
+
     void initialize() throws Exception {
-        Path marker = plugin.getDataFolder().toPath().resolve("mob-performance-v7.txt");
+        Path marker = plugin.getDataFolder().toPath().resolve("mob-performance-v8.txt");
         var level = plugin.getServer().getWorlds().getFirst().getWorldFolder().toPath();
         var dimension = level.resolve("dimensions/minecraft/" + manifest.world());
         if (!Files.exists(marker) && Files.exists(dimension)) {
@@ -99,12 +106,6 @@ final class MobPerformanceWorld {
             for (var farm : farms) build(farm);
             Files.createDirectories(marker.getParent());
             Files.writeString(marker, "world=" + world.getUID() + "\nfarms=" + farms.size() + "\n");
-        }
-        // Idempotent, so labs generated with the earlier pad inside the protection belts are moved too.
-        var oldPad = world.getBlockAt((columns - 1) * manifest.spacing() / 2 + 6, AFK_Y - 1,
-                ((manifest.default_farms() + columns - 1) / columns - 1) * manifest.spacing() / 2 + 6);
-        if (oldPad.getType() == Material.GLASS && (oldPad.getX() != afk[0] || oldPad.getZ() != afk[2])) {
-            oldPad.setType(Material.AIR, false);
         }
         world.getBlockAt(afk[0], afk[1] - 1, afk[2]).setType(Material.GLASS, false);
         plugin.getLogger().info("FARM_LAB_MOB_PERFORMANCE_READY farms=" + farms.size() + " world=" + world.getName()

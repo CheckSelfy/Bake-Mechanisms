@@ -5,7 +5,7 @@
   "mob": "zombified_piglin",
   "default_farms": 3,
   "maximum_farms": 3,
-  "spacing": 16,
+  "spacing": 17,
   "min_spawn_delay": 5,
   "max_spawn_delay": 10,
   "spawn_count": 128,
@@ -14,7 +14,7 @@
   "adaptations": [
     "Every plot is an independent copy of the extracted collection mechanism, with its own external double-chest output.",
     "The source's unaudited ender chest and comparator tiles are removed from each disposable copy.",
-    "The three mechanisms occupy distinct chunks, with empty blocks between them; a shared AFK pad is within the vanilla 16-block player activation range of all three spawners.",
-    "Each spawner is configured for zombified piglins at 5..10 ticks, spawn count 128 and max nearby 1024. This is an intentionally high-load schedule (about four times the prior high-load schedule); its spawner-created piglins are marked persistent for the snapshot contract, while a persistent invulnerable iron golem performs native kills and the original hopper route collects the gold-nugget output without an input resource."
+    "The three mechanisms occupy distinct chunks, 17 blocks apart so their profiling protection belts (mechanism expanded by 2) do not overlap and all three can be profiled at once; a shared AFK pad outside every belt is within the vanilla 16-block player activation range of all three spawners.",
+    "Each spawner is configured for zombified piglins at 5..10 ticks, spawn count 128 and max nearby 1024. This is an intentionally high-load schedule (about four times the prior high-load schedule); its spawner-created piglins stay non-persistent as vanilla spawns them (stasis captures them natively), while a persistent invulnerable iron golem performs native kills and the original hopper route collects the gold-nugget output without an input resource."
   ]
 }

@@ -23,10 +23,10 @@ class MobPerformanceWorldTests(unittest.TestCase):
         self.assertEqual(fixture['max_nearby_entities'], 1024)
         self.assertEqual(fixture['default_farms'], 3)
         self.assertGreaterEqual(fixture['maximum_farms'], fixture['default_farms'])
-        self.assertEqual(fixture['spacing'], 16)
+        self.assertEqual(fixture['spacing'], 17)
 
         columns = 2
-        occupied, outputs, mechanism_chunks = set(), set(), set()
+        occupied, outputs, mechanism_chunks, belts = set(), set(), set(), set()
         for index in range(fixture['default_farms']):
             x = (index % columns) * fixture['spacing']
             z = (index // columns) * fixture['spacing']
@@ -42,11 +42,15 @@ class MobPerformanceWorldTests(unittest.TestCase):
             chunks = {(block_x >> 4, block_z >> 4) for block_x, block_z in mechanism}
             self.assertTrue(mechanism_chunks.isdisjoint(chunks))
             mechanism_chunks |= chunks
+            # ProfilingService refuses to profile a farm whose protection belt (mechanism expanded by
+            # ProfilingIsolation.MARGIN = 2) overlaps the belt of a farm being profiled; at spacing 16 they did.
+            belt = {(block_x, block_z) for block_x in range(x - 2, x + 15) for block_z in range(z - 2, z + 15)}
+            self.assertTrue(belts.isdisjoint(belt), f'belt of farm {index + 1} overlaps another belt')
+            belts |= belt
 
         # The shared pad sits in the gap between the farms' profiling protection belts (mechanism
         # expanded by ProfilingIsolation.MARGIN = 2), five blocks above the spawners; every spawner
-        # centre must be inside vanilla's 16-block activation range. The earlier pad at (14, 89, 14)
-        # was inside all three belts.
+        # centre must be inside vanilla's 16-block activation range.
         margin = 2
         afk_block = (fixture['spacing'] - 1, 89, fixture['spacing'] - 1)
         afk_x, afk_y, afk_z = afk_block[0] + .5, afk_block[1], afk_block[2] + .5
