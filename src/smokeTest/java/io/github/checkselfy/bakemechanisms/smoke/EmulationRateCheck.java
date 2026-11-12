@@ -144,9 +144,14 @@ final class EmulationRateCheck {
     private MarkedFarm farm(int x, StasisEmulationService emulation) throws Exception {
         int y = 300;
         int z = 32;
+        // The smoke world persists between runs: empty the previous run's chest so replacing it drops nothing.
         for (int dx = 0; dx <= 3; dx++) for (int dy = 0; dy <= 2; dy++) for (int dz = 0; dz <= 2; dz++) {
-            world.getBlockAt(x + dx, y + dy, z + dz).setType(dy == 0 ? Material.STONE : Material.AIR, false);
+            var block = world.getBlockAt(x + dx, y + dy, z + dz);
+            if (block.getState(false) instanceof Container container) container.getInventory().clear();
+            block.setType(dy == 0 ? Material.STONE : Material.AIR, false);
         }
+        world.getNearbyEntities(new org.bukkit.util.BoundingBox(x - 4, y - 2, z - 4, x + 9, y + 3, z + 6)).stream()
+                .filter(entity -> entity instanceof org.bukkit.entity.Item).forEach(org.bukkit.entity.Entity::remove);
         // Output outside the mechanism: a real double chest, never accounted for through one half.
         world.getBlockAt(x + 3, y, z).setBlockData(plugin.getServer()
                 .createBlockData("minecraft:chest[facing=east,type=left,waterlogged=false]"), false);
