@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
-import java.util.UUID;
 import java.util.function.Consumer;
 import org.bukkit.Difficulty;
 import org.bukkit.GameRules;
@@ -27,16 +26,20 @@ import org.bukkit.block.structure.StructureRotation;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Wolf;
+import org.bukkit.entity.IronGolem;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.generator.WorldInfo;
 import org.bukkit.loot.Lootable;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
 
-/** Builds a scalable, real-PPL9 skeleton-spawner benchmark world; never mass-registers its farms. */
+/** Builds a compact PPL9-derived zombified-piglin gold-farm benchmark; never mass-registers its farms. */
 final class MobPerformanceWorld {
-    private record Manifest(int format, String world, String template, int default_farms, int maximum_farms, int spacing) { }
+    private record Manifest(int format, String world, String template, String mob, int default_farms, int maximum_farms, int spacing,
+                            int min_spawn_delay, int max_spawn_delay, int spawn_count, int max_nearby_entities) { }
     private record Farm(String id, int x, int z) {
         int[] min() { return new int[]{x, 64, z}; }
         int[] max() { return new int[]{x + 12, 88, z + 12}; }
@@ -54,14 +57,16 @@ final class MobPerformanceWorld {
                 plugin.getResource("mob-performance-fixtures/farms.json")), StandardCharsets.UTF_8)) {
             manifest = new Gson().fromJson(input, Manifest.class);
         }
-        if (manifest.format() != 1 || !manifest.template().equals("skeleton") || manifest.default_farms() < 1
-                || manifest.default_farms() > manifest.maximum_farms() || manifest.spacing() < 16) {
+        if (manifest.format() != 1 || !manifest.template().equals("skeleton") || !manifest.mob().equals("zombified_piglin") || manifest.default_farms() < 1
+                || manifest.default_farms() > manifest.maximum_farms() || manifest.spacing() < 16
+                || manifest.min_spawn_delay() < 1 || manifest.max_spawn_delay() < manifest.min_spawn_delay()
+                || manifest.spawn_count() < 1 || manifest.max_nearby_entities() < manifest.spawn_count()) {
             throw new IllegalStateException("Unknown mob-performance fixture manifest");
         }
     }
 
     void initialize() throws Exception {
-        Path marker = plugin.getDataFolder().toPath().resolve("mob-performance-v1.txt");
+        Path marker = plugin.getDataFolder().toPath().resolve("mob-performance-v7.txt");
         var level = plugin.getServer().getWorlds().getFirst().getWorldFolder().toPath();
         var dimension = level.resolve("dimensions/minecraft/" + manifest.world());
         if (!Files.exists(marker) && Files.exists(dimension)) {
@@ -80,16 +85,30 @@ final class MobPerformanceWorld {
         world.setGameRule(GameRules.RANDOM_TICK_SPEED, 3);
         world.setTime(6000);
         world.setDifficulty(Difficulty.HARD);
+        plugin.getServer().getPluginManager().registerEvents(new Listener() {
+            @EventHandler(ignoreCancelled = true)
+            public void onSpawnerSpawn(CreatureSpawnEvent event) {
+                if (event.getSpawnReason() == CreatureSpawnEvent.SpawnReason.SPAWNER
+                        && event.getEntityType() == EntityType.ZOMBIFIED_PIGLIN
+                        && event.getLocation().getWorld().equals(world)) {
+                    // The production snapshot contract preserves entities; vanilla spawner mobs otherwise
+                    // arrive non-persistent and would be rejected before stasis can remove anything.
+                    event.getEntity().setPersistent(true);
+                }
+            }
+        }, plugin);
 
         int columns = (int) Math.ceil(Math.sqrt(manifest.default_farms()));
         for (int i = 0; i < manifest.default_farms(); i++) {
             farms.add(new Farm("mobperf%02d".formatted(i + 1), (i % columns) * manifest.spacing(),
                     (i / columns) * manifest.spacing()));
         }
-        world.setSpawnLocation((columns - 1) * manifest.spacing() / 2, 65,
-                ((manifest.default_farms() + columns - 1) / columns - 1) * manifest.spacing() / 2);
+        int afkX = (columns - 1) * manifest.spacing() / 2 + 6;
+        int afkZ = ((manifest.default_farms() + columns - 1) / columns - 1) * manifest.spacing() / 2 + 6;
+        world.setSpawnLocation(afkX, 89, afkZ);
         if (!Files.exists(marker)) {
             for (var farm : farms) build(farm);
+            world.getBlockAt(afkX, 88, afkZ).setType(Material.GLASS, false);
             Files.createDirectories(marker.getParent());
             Files.writeString(marker, "world=" + world.getUID() + "\nfarms=" + farms.size() + "\n");
         }
@@ -106,13 +125,11 @@ final class MobPerformanceWorld {
     void navigate(Player player, String[] args) {
         var farm = farms.stream().filter(candidate -> candidate.id().equals(args[1])).findFirst().orElseThrow();
         if (args.length == 2 && args[0].equals("visit")) {
-            if (!player.teleport(new Location(world, farm.x() - 3.5, 74, farm.z() + 6.5))) {
+            if (!player.teleport(new Location(world, world.getSpawnLocation().getX() + .5, 89,
+                    world.getSpawnLocation().getZ() + .5))) {
                 throw new IllegalStateException("Teleport refused by farm protection");
             }
-            for (var entity : world.getNearbyEntities(box(farm))) if (entity instanceof Wolf wolf) {
-                wolf.setOwner(player); wolf.setSitting(false);
-            }
-            player.sendMessage("AFK position for " + farm.id() + ". Stay here to activate its spawner; use the same active plots in both benchmark phases.");
+            player.sendMessage("Shared AFK position for the three-farm benchmark. Stay here to activate every spawner; use the same position in both benchmark phases.");
         } else if (args.length == 3 && args[0].equals("corner")) {
             int[] target = switch (args[2]) {
                 case "1" -> farm.min(); case "2" -> farm.max(); case "output" -> farm.output();
@@ -148,15 +165,12 @@ final class MobPerformanceWorld {
         at(farm, 5, 9, 6).setType(Material.GLASS, false);
         chest(farm, -1, 7, 6, "west", "left"); chest(farm, -1, 7, 5, "west", "right");
         at(farm, -3, 9, 6).setType(Material.GLASS, false);
-        var owner = plugin.getServer().getOfflinePlayer(UUID.nameUUIDFromBytes(("BakeFarmLab:" + farm.id()).getBytes(StandardCharsets.UTF_8)));
-        for (int i = 0; i < 6; i++) {
-            var wolf = (Wolf) world.spawnEntity(location(farm, 6.5, 9, 6.5), EntityType.WOLF);
-            wolf.setOwner(owner); wolf.setSitting(false); wolf.setAdult(); wolf.setInvulnerable(true);
-            wolf.setPersistent(true); wolf.setRemoveWhenFarAway(false);
-        }
+        var golem = (IronGolem) world.spawnEntity(location(farm, 6.5, 9, 6.5), EntityType.IRON_GOLEM);
+        golem.setPlayerCreated(false); golem.setInvulnerable(true); golem.setPersistent(true); golem.setRemoveWhenFarAway(false);
         var spawner = (CreatureSpawner) at(farm, 6, 20, 6).getState();
-        spawner.setMinSpawnDelay(80); spawner.setMaxSpawnDelay(120); spawner.setDelay(1);
-        spawner.setSpawnCount(4); spawner.setMaxNearbyEntities(24); spawner.update(true, false);
+        spawner.setSpawnedType(EntityType.ZOMBIFIED_PIGLIN);
+        spawner.setMinSpawnDelay(manifest.min_spawn_delay()); spawner.setMaxSpawnDelay(manifest.max_spawn_delay()); spawner.setDelay(1);
+        spawner.setSpawnCount(manifest.spawn_count()); spawner.setMaxNearbyEntities(manifest.max_nearby_entities()); spawner.update(true, false);
         at(farm, 0, 0, 0).setType(Material.GOLD_BLOCK, false);
         at(farm, 12, 24, 12).setType(Material.LIME_CONCRETE, false);
         if (((Container) at(farm, -1, 7, 6).getState()).getInventory().getSize() != 54) {

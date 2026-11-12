@@ -4,7 +4,7 @@
 
 Для ручной проверки в Minecraft 26.3 используйте [небольшой общий мир из двух извлечённых ферм PPL9](manual-farm-lab.md): `python scripts/farm-lab.py run`, затем Multiplayer → `127.0.0.1:25566`. [NBT-структуры и манифест](../../test-worlds/ppl9/README.md) находятся в репозитории; из них создаются отдельные копии для ручного и headless-прогона. Полная исходная карта не требуется.
 
-Тот же локальный lab дополнительно создаёт отдельный мир из 16 PPL9 skeleton-spawner ферм для performance-review #12. Его границы, источник и ограничения описаны в [ppl9-mobs-performance](../../test-worlds/ppl9-mobs-performance/README.md); это ручной benchmark input, а не smoke-тест.
+Тот же локальный lab дополнительно создаёт отдельный мир из трёх компактно расположенных ферм золота на зомбифицированных пиглинах для performance-review #12. Их общая AFK-точка, границы, источник и ограничения описаны в [ppl9-mobs-performance](../../test-worlds/ppl9-mobs-performance/README.md); это ручной benchmark input, а не smoke-тест.
 
 ## Быстрый запуск
 

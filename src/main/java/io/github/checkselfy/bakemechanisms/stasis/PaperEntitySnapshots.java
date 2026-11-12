@@ -61,6 +61,9 @@ public final class PaperEntitySnapshots {
         var roots = new LinkedHashMap<UUID, Entity>();
         var bounds = PaperProfilingWorld.box(region);
         for (var entity : world.getNearbyEntities(bounds)) {
+            // Paper can expose a just-discarded mob until the enclosing tick completes. It no longer
+            // belongs to the world and must not make a whole farm snapshot fail.
+            if (!entity.isValid()) continue;
             if (!entity.getBoundingBox().overlaps(bounds)) continue;
             var root = entity;
             var path = new HashSet<UUID>();
@@ -76,9 +79,6 @@ public final class PaperEntitySnapshots {
             for (var entity : members) {
                 validateType(entity);
                 validateRuntimeState(entity);
-                if (!entity.isValid() || !entity.isPersistent()) {
-                    throw new IllegalStateException("Сущность не может быть сохранена: " + entity.getType());
-                }
                 if (entity instanceof LivingEntity living && living.isLeashed()) {
                     throw new IllegalStateException("Сначала снимите поводок с сущности " + entity.getType());
                 }

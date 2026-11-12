@@ -2,13 +2,19 @@
   "format": 1,
   "world": "farm_lab_mob_performance",
   "template": "skeleton",
-  "default_farms": 16,
-  "maximum_farms": 32,
-  "spacing": 32,
-  "source": "ppl9-farm skeleton spawner extracted in test-worlds/ppl9-mobs",
+  "mob": "zombified_piglin",
+  "default_farms": 3,
+  "maximum_farms": 3,
+  "spacing": 16,
+  "min_spawn_delay": 5,
+  "max_spawn_delay": 10,
+  "spawn_count": 128,
+  "max_nearby_entities": 1024,
+  "source": "PPL9 skeleton-spawner collection mechanism extracted in test-worlds/ppl9-mobs",
   "adaptations": [
-    "Every plot is an independent copy of the extracted skeleton spawner mechanism, with its own external double-chest output.",
+    "Every plot is an independent copy of the extracted collection mechanism, with its own external double-chest output.",
     "The source's unaudited ender chest and comparator tiles are removed from each disposable copy.",
-    "Each source spawner is configured with the existing lab's 80..120-tick delay, spawn count 4 and max nearby 24 so that the grid supplies sustained native entity, AI, combat, drop and hopper work."
+    "The three mechanisms occupy distinct chunks, with empty blocks between them; a shared AFK pad is within the vanilla 16-block player activation range of all three spawners.",
+    "Each spawner is configured for zombified piglins at 5..10 ticks, spawn count 128 and max nearby 1024. This is an intentionally high-load schedule (about four times the prior high-load schedule); its spawner-created piglins are marked persistent for the snapshot contract, while a persistent invulnerable iron golem performs native kills and the original hopper route collects the gold-nugget output without an input resource."
   ]
 }

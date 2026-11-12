@@ -207,6 +207,7 @@ tasks.register("resetFarmLab") {
         // Departure positions of players; recreated on the next logout.
         serverDir.resolve("plugins/BakeMechanisms/offline-players.dat").delete()
         serverDir.resolve("world/dimensions/minecraft/farm_lab").deleteRecursively()
+        serverDir.resolve("world/dimensions/minecraft/farm_lab_mob_performance").deleteRecursively()
         labData.deleteRecursively()
         logger.lifecycle("Farm lab reset; runServer will rebuild it from test-worlds.")
     }

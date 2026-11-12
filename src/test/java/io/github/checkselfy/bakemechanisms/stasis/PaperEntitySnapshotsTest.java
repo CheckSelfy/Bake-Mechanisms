@@ -239,15 +239,13 @@ class PaperEntitySnapshotsTest {
         verify(copy, never()).spawnAt(any(), any());
     }
 
-    @Test void leashedNonPersistentAndOpenInventoryEntitiesAreRejectedBeforeSerialization() {
+    @Test void leashedAndOpenInventoryEntitiesAreRejectedBeforeSerialization() {
         var cow = mock(org.bukkit.entity.Cow.class);
         initialize(cow, EntityType.COW);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
         when(cow.isLeashed()).thenReturn(true);
         assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
         when(cow.isLeashed()).thenReturn(false);
-        when(cow.isPersistent()).thenReturn(false);
-        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
         var cart = mock(org.bukkit.entity.minecart.StorageMinecart.class);
         initialize(cart, EntityType.CHEST_MINECART);
         var inventory = mock(org.bukkit.inventory.Inventory.class);
@@ -255,6 +253,25 @@ class PaperEntitySnapshotsTest {
         when(inventory.getViewers()).thenReturn(List.of(mock(Player.class)));
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cart));
         assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void nonPersistentSpawnerMobIsSerialized() {
+        var cow = mock(org.bukkit.entity.Cow.class);
+        initialize(cow, EntityType.COW);
+        when(cow.isPersistent()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
+        when(serialization.serializeEntity(cow, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(cow);
+        assertEquals(1, snapshots.capture(world, region).size());
+    }
+
+    @Test void justDiscardedEntityIsIgnoredBeforeSerialization() {
+        var cow = mock(org.bukkit.entity.Cow.class);
+        initialize(cow, EntityType.COW);
+        when(cow.isValid()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
+        assertTrue(snapshots.capture(world, region).isEmpty());
         verifyNoInteractions(serialization);
     }
 
