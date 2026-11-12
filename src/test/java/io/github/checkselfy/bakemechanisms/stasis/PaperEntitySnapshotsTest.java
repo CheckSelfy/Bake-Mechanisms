@@ -261,9 +261,26 @@ class PaperEntitySnapshotsTest {
         initialize(cow, EntityType.COW);
         when(cow.isPersistent()).thenReturn(false);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(cow));
-        when(serialization.serializeEntity(cow, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.serializeEntity(cow, EntitySerializationFlag.PASSENGERS, EntitySerializationFlag.FORCE))
+                .thenReturn(new byte[] { 1 });
         when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(cow);
         assertEquals(1, snapshots.capture(world, region).size());
+        // Paper rejects non-persistent entities without FORCE; persistent trees keep the plain flags.
+        verify(serialization, never()).serializeEntity(cow, EntitySerializationFlag.PASSENGERS);
+    }
+
+    @Test void invalidPassengerOfAValidVehicleIsNeverForceSerialized() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(rider.isPersistent()).thenReturn(false);
+        when(rider.isValid()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
     }
 
     @Test void justDiscardedEntityIsIgnoredBeforeSerialization() {

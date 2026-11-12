@@ -86,7 +86,18 @@ public final class PaperEntitySnapshots {
                     throw new IllegalStateException("Закройте инвентарь транспорта перед стазисом.");
                 }
             }
-            var data = plugin.getServer().getUnsafe().serializeEntity(root, EntitySerializationFlag.PASSENGERS);
+            for (var entity : members) {
+                if (!entity.isValid()) {
+                    throw new IllegalStateException("Сущность " + entity.getType() + " в группе транспорта удаляется или умирает.");
+                }
+            }
+            // Spawner mobs are commonly non-persistent (not written to chunk files). Paper refuses to serialize them
+            // without FORCE; the NBT keeps Bukkit.persist=false, so the restored mob stays non-persistent. FORCE also
+            // admits dead or removed entities, which is why every member was checked to be valid above.
+            var data = members.stream().allMatch(Entity::isPersistent)
+                    ? plugin.getServer().getUnsafe().serializeEntity(root, EntitySerializationFlag.PASSENGERS)
+                    : plugin.getServer().getUnsafe().serializeEntity(root, EntitySerializationFlag.PASSENGERS,
+                            EntitySerializationFlag.FORCE);
             if (members.size() > 1 || members.stream().anyMatch(entity -> entity instanceof Minecart || entity instanceof LivingEntity)) {
                 // Defaults depend on the native cart implementation/configuration. Compare a detached native load,
                 // rather than silently losing settings or hardcoding the defaults of one movement implementation.
