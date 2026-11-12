@@ -293,6 +293,7 @@ tasks.register<JavaExec>("stasisSmoke") {
     classpath = files(smokeDir.resolve("paper.jar"))
     javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Xms512M", "-Xmx1G")
+    providers.gradleProperty("smokeOnly").orNull?.let { jvmArgs("-Dbake.smoke.only=$it") }
     args("nogui")
     doFirst {
         smokeDir.resolve("plugins").mkdirs()
@@ -335,8 +336,71 @@ tasks.register<JavaExec>("stasisSmoke") {
             || !log.contains("SLIME_FILLER_SMOKE_PASSED")
             || !log.contains("EMULATION_RATE_SMOKE_PASSED")
             || !log.contains("FULL_DOUBLE_CHEST_SMOKE_PASSED")
+            || !log.contains("NATIVE_MOB_STASIS_SMOKE_PASSED")
             || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
             throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
+        }
+    }
+}
+
+// #12 Stream B: a live zombified-piglin cell with non-persistent mobs and chicken jockeys enters stasis in one JVM
+// (retrying automatically past a natively dying rider) and is restored from the durable snapshot in a second one.
+val nativeMobDir = layout.projectDirectory.dir("run/native-mob-smoke").asFile
+fun JavaExec.nativeMobServer(phase: String) {
+    dependsOn("setupServer", tasks.jar, stasisSmokeJar)
+    workingDir = nativeMobDir
+    classpath = files(nativeMobDir.resolve("paper.jar"))
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    jvmArgs("-Dterminal.jline=false", "-Dterminal.ansi=false", "-Dbake.native-mob.phase=$phase", "-Xms512M", "-Xmx1G")
+    args("nogui")
+}
+val nativeMobCapture = tasks.register<JavaExec>("nativeMobCapture") {
+    group = "verification"
+    description = "Lets a live zombified-piglin cell run, enters stasis without operator cleanup, then shuts Paper down."
+    nativeMobServer("capture")
+    doFirst {
+        nativeMobDir.resolve("plugins").mkdirs()
+        nativeMobDir.resolve("cache").mkdirs()
+        layout.projectDirectory.file("server/paper.jar").asFile.copyTo(nativeMobDir.resolve("paper.jar"), overwrite = true)
+        layout.projectDirectory.file("server/cache/mojang_26.3.jar").asFile
+            .copyTo(nativeMobDir.resolve("cache/mojang_26.3.jar"), overwrite = true)
+        layout.projectDirectory.file("server/eula.txt").asFile.copyTo(nativeMobDir.resolve("eula.txt"), overwrite = true)
+        tasks.jar.get().archiveFile.get().asFile.copyTo(nativeMobDir.resolve("plugins/bake-mechanisms.jar"), overwrite = true)
+        stasisSmokeJar.get().archiveFile.get().asFile.copyTo(nativeMobDir.resolve("plugins/bake-stasis-smoke.jar"), overwrite = true)
+        nativeMobDir.resolve("server.properties").writeText(
+            "online-mode=false\nserver-ip=127.0.0.1\nserver-port=0\nview-distance=2\nsimulation-distance=2\npause-when-empty-seconds=-1\n"
+        )
+        nativeMobDir.resolve("spigot.yml").writeText("""
+            world-settings:
+              default:
+                entity-activation-range:
+                  animals: 0
+                  monsters: 0
+                  villagers: 0
+                  raiders: 0
+                  water: 0
+                  flying-monsters: 0
+                  misc: 0
+        """.trimIndent())
+        Files.deleteIfExists(nativeMobDir.resolve("logs/latest.log").toPath())
+    }
+    doLast {
+        val log = nativeMobDir.resolve("logs/latest.log").readText()
+        if (!log.contains("NATIVE_MOB_CAPTURE_PASSED") || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Native mob capture failed. See run/native-mob-smoke/logs/latest.log")
+        }
+        nativeMobDir.resolve("logs/native-mob-capture.log").writeText(log)
+    }
+}
+tasks.register<JavaExec>("nativeMobSmoke") {
+    group = "verification"
+    description = "Restarts Paper after nativeMobCapture and restores the zombified piglins and chicken jockeys."
+    nativeMobServer("restore")
+    dependsOn(nativeMobCapture)
+    doLast {
+        val log = nativeMobDir.resolve("logs/latest.log").readText()
+        if (!log.contains("NATIVE_MOB_RESTART_PASSED") || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
+            throw GradleException("Native mob restart check failed. See run/native-mob-smoke/logs/latest.log")
         }
     }
 }

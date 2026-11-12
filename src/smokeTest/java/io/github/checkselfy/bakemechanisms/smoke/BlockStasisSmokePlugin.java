@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
@@ -41,6 +42,30 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                 if (auditPhase != null) {
                     try { EntityNbtCheck.run(this, auditPhase); }
                     finally { getServer().shutdown(); }
+                    return;
+                }
+                var nativePhase = System.getProperty("bake.native-mob.phase");
+                if (nativePhase != null) {
+                    NativeMobStasisCheck.run(this, NativeMobStasisCheck.Mode.valueOf(nativePhase.toUpperCase(java.util.Locale.ROOT)),
+                            error -> {
+                                if (error != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
+                                getServer().shutdown();
+                            });
+                    return;
+                }
+                // Developer shortcut: -PsmokeOnly=<native|rate|full> runs one asynchronous check alone.
+                var only = System.getProperty("bake.smoke.only");
+                if (only != null) {
+                    Consumer<Throwable> stop = error -> {
+                        if (error != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", error);
+                        getServer().shutdown();
+                    };
+                    switch (only) {
+                        case "native" -> NativeMobStasisCheck.run(this, NativeMobStasisCheck.Mode.IN_PROCESS, stop);
+                        case "rate" -> EmulationRateCheck.run(this, stop);
+                        case "full" -> FullDoubleChestCheck.run(this, stop);
+                        default -> stop.accept(new IllegalArgumentException("Unknown smoke check " + only));
+                    }
                     return;
                 }
                 checkSnapshots();
@@ -75,8 +100,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                                         getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", rateError);
                                         getServer().shutdown();
                                     } else FullDoubleChestCheck.run(this, fullError -> {
-                                        if (fullError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", fullError);
-                                        getServer().shutdown();
+                                        if (fullError != null) {
+                                            getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", fullError);
+                                            getServer().shutdown();
+                                        } else NativeMobStasisCheck.run(this, NativeMobStasisCheck.Mode.IN_PROCESS, mobError -> {
+                                            if (mobError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", mobError);
+                                            getServer().shutdown();
+                                        });
                                     });
                                 });
                             });
