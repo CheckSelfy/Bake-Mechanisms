@@ -56,6 +56,8 @@ final class NativeMobStasisCheck implements Listener {
 
     private static final int X = 480, Y = 300, Z = 32, SIZE = 13;
     private static final int WARMUP_TICKS = 200;
+    /** Offset of the glass wall between the golem's arena and the shelter. */
+    private static final int SHELTER_WALL = 8;
     private final JavaPlugin plugin;
     private final Mode mode;
     private final Consumer<Throwable> finish;
@@ -119,6 +121,12 @@ final class NativeMobStasisCheck implements Listener {
             block.setType(x == X + SIZE ? Material.AIR : y == Y ? Material.STONE
                     : y == Y + 5 || wall ? Material.GLASS : Material.AIR, false);
         }
+        // A glass wall splits the cell. In the arena (dz 1..7) the golem kills piglins natively during warmup.
+        // The shelter (dz 9..11) is out of its sight and reach, so a jockey and several spawner piglins always
+        // survive; otherwise the golem sometimes killed every rider first and the check failed by chance.
+        for (int x = X + 1; x < X + SIZE - 1; x++) for (int y = Y + 1; y < Y + 5; y++) {
+            world.getBlockAt(x, y, Z + SHELTER_WALL).setType(Material.GLASS, false);
+        }
         var output = world.getBlockAt(X + SIZE, Y, Z);
         output.setType(Material.BARREL, false);
         var golem = world.spawn(at(6.5, 6.5), IronGolem.class, SpawnReason.CUSTOM, false, created -> { });
@@ -132,7 +140,8 @@ final class NativeMobStasisCheck implements Listener {
             });
         }
         for (int i = 0; i < 3; i++) {
-            var chicken = world.spawn(at(3.5 + i * 3, 9.5), Chicken.class, SpawnReason.JOCKEY, false, created -> {
+            // Jockeys 0 and 2 in the shelter, jockey 1 in the arena with the golem.
+            var chicken = world.spawn(at(3.5 + i * 3, i == 1 ? 4.5 : 9.5), Chicken.class, SpawnReason.JOCKEY, false, created -> {
                 created.setIsChickenJockey(true);
                 created.setPersistent(false);
             });
@@ -207,8 +216,8 @@ final class NativeMobStasisCheck implements Listener {
             check(!entity.isValid() || entity instanceof Player, "living entity left in the filler: " + entity.getType());
         }
         var jockeyGroups = groups.stream().filter(group -> group.members().size() == 2).toList();
-        // The golem keeps killing during warmup and retries, so only the survivors are known; at least one jockey
-        // and several spawner piglins must remain for the check to mean anything.
+        // The golem keeps killing in the arena during warmup and retries, so only the survivors are known there;
+        // the shelter guarantees at least one jockey and several spawner piglins.
         check(!jockeyGroups.isEmpty(), "no living chicken jockey was captured as a passenger tree");
         check(members.size() >= 8, "too few entities captured: " + members.size());
         var expected = new YamlConfiguration();
