@@ -104,11 +104,24 @@ public final class PaperEntitySnapshots {
                 var copy = plugin.getServer().getUnsafe().deserializeEntity(data, world, true, true);
                 var copies = new LinkedHashMap<UUID, Entity>();
                 for (var member : tree(copy)) copies.put(member.getUniqueId(), member);
-                for (var member : members) if (member.getVehicle() != null) {
+                // Validate what restore actually reproduces. Restore spawns the root at its saved position and the
+                // vehicle seats every passenger, then re-seats it on each tick from the vehicle's position and body
+                // rotation (e.g. a chicken jockey's rider), which NBT does not store. So a passenger's own coordinates
+                // are not state: compare the root's exact position and every passenger's vehicle instead.
+                for (var member : members) {
                     var restored = copies.get(member.getUniqueId());
-                    if (restored == null || member.getLocation().distanceSquared(restored.getLocation()) > 0.00000001) {
-                        throw new IllegalStateException("NBT меняет текущую позицию пассажира " + member.getType()
-                                + ". Дождитесь завершения посадки или высадите пассажира перед стазисом.");
+                    if (restored == null) {
+                        throw new IllegalStateException("NBT не сохраняет сущность " + member.getType() + " в группе транспорта.");
+                    }
+                    var vehicle = member.getVehicle();
+                    if (vehicle == null) {
+                        if (member.getLocation().distanceSquared(restored.getLocation()) > 0.00000001) {
+                            throw new IllegalStateException("NBT меняет текущую позицию " + member.getType() + ".");
+                        }
+                    } else if (restored.getVehicle() == null
+                            || !restored.getVehicle().getUniqueId().equals(vehicle.getUniqueId())) {
+                        throw new IllegalStateException("NBT не сохраняет посадку пассажира " + member.getType()
+                                + " на " + vehicle.getType() + ".");
                     }
                 }
                 for (var member : members) if (member instanceof InventoryHolder holder) {

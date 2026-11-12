@@ -283,6 +283,59 @@ class PaperEntitySnapshotsTest {
         verifyNoInteractions(serialization);
     }
 
+    @Test void chickenJockeyIsAcceptedAlthoughNbtReseatsItsRiderElsewhere() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(rider.getLocation()).thenReturn(new org.bukkit.Location(world, 0.07, 64.6, -0.07));
+        var chickenCopy = mock(org.bukkit.entity.Chicken.class);
+        var riderCopy = mock(org.bukkit.entity.PigZombie.class);
+        var chickenId = chicken.getUniqueId();
+        var riderId = rider.getUniqueId();
+        when(chickenCopy.getUniqueId()).thenReturn(chickenId);
+        when(riderCopy.getUniqueId()).thenReturn(riderId);
+        when(chickenCopy.getPassengers()).thenReturn(List.of(riderCopy));
+        when(chickenCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(riderCopy.getVehicle()).thenReturn(chickenCopy);
+        // The detached copy seats the rider from the default body rotation, not the live one.
+        when(riderCopy.getLocation()).thenReturn(new org.bukkit.Location(world, -0.1, 64.6, 0));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(rider, chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
+        var groups = snapshots.capture(world, region);
+        assertEquals(1, groups.size());
+        assertEquals(List.of(chicken.getUniqueId(), rider.getUniqueId()), groups.getFirst().members());
+    }
+
+    @Test void vehicleWhoseNbtLosesThePassengerOrMovesTheRootIsRejected() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        var chickenCopy = mock(org.bukkit.entity.Chicken.class);
+        var riderCopy = mock(org.bukkit.entity.PigZombie.class);
+        var chickenId = chicken.getUniqueId();
+        var riderId = rider.getUniqueId();
+        when(chickenCopy.getUniqueId()).thenReturn(chickenId);
+        when(riderCopy.getUniqueId()).thenReturn(riderId);
+        when(chickenCopy.getPassengers()).thenReturn(List.of(riderCopy));
+        when(chickenCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(riderCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        when(serialization.serializeEntity(chicken, EntitySerializationFlag.PASSENGERS)).thenReturn(new byte[] { 1 });
+        when(serialization.deserializeEntity(any(), eq(world), eq(true), eq(true))).thenReturn(chickenCopy);
+        // Seated on nothing in the copy.
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        when(riderCopy.getVehicle()).thenReturn(chickenCopy);
+        when(chickenCopy.getLocation()).thenReturn(new org.bukkit.Location(world, 0.5, 64, 0));
+        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+    }
+
     @Test void justDiscardedEntityIsIgnoredBeforeSerialization() {
         var cow = mock(org.bukkit.entity.Cow.class);
         initialize(cow, EntityType.COW);
