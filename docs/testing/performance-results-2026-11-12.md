@@ -4,6 +4,13 @@
 
 ## Итог — PASS
 
+> **Повторный прогон после слияния Stream B.** Этот результат получен на `fix/todo-streams` до слияния с
+> Stream B из `feature/BM-34-gleb`, поэтому он не покрывает объединённый код входа в стазис. Приёмка повторена
+> на слитом дереве: оригиналы 8.521 TPS / 115.603 median MSPT → стазис 20.001 TPS / 0.267 median MSPT,
+> выработка за 1200 игровых тиков точна во всех 10 комбинациях, `forbidden-operator-commands: []`.
+> См. [evidence/2026-11-12-mob-acceptance-merged](evidence/2026-11-12-mob-acceptance-merged/README.md).
+
+
 Оба условия #12 подтверждены одним и тем же прогоном: стоимость тиков снижается, а выработка в стазисе совпадает с профилем точно.
 
 Прогон автоматический, без оператора: `python scripts/farm-lab.py mob-review --mode acceptance --accept-eula --evidence docs/testing/evidence/2026-11-12-mob-acceptance`. Окружение — Paper 26.3-246, Java 25, свежая серверная папка `run/farm-lab-mob-acceptance`, non-OP headless-клиент. Сценарий:

@@ -65,6 +65,9 @@ public final class MobPerformanceReviewPlugin extends JavaPlugin implements List
     private Path originalBenchmark;
     private Path stasisBenchmark;
     private boolean waiting;
+    /** Re-issued `farmlab visit` attempts; bounded so a client that truly cannot stay put still fails. */
+    private int visits;
+    private static final int MAX_VISITS = 20;
 
     @Override public void onEnable() {
         lab = (FarmLabPlugin) getServer().getPluginManager().getPlugin("BakeFarmLab");
@@ -121,7 +124,7 @@ public final class MobPerformanceReviewPlugin extends JavaPlugin implements List
             next(1);
         } else if (phase == 1) {
             if (ticks < 20) return;
-            standsOnSafePad();
+            if (!onSafePad()) return;
             if (!Files.exists(seeded)) {
                 // First process: these registrations become stale when the lab is reset.
                 for (var farm : lab.mobPerformance().benchmarkFarmGeometry()) register(farm);
@@ -147,7 +150,7 @@ public final class MobPerformanceReviewPlugin extends JavaPlugin implements List
         } else if (phase == 2) {
             // Native originals warm up, then (acceptance) the original phase is benchmarked from the pad.
             if (ticks < 600) return;
-            standsOnSafePad();
+            if (!onSafePad()) return;
             if (mode.equals("acceptance") && originalBenchmark == null) {
                 benchmark("original", true, path -> originalBenchmark = path);
                 return;
@@ -296,17 +299,27 @@ public final class MobPerformanceReviewPlugin extends JavaPlugin implements List
                 });
     }
 
-    private void standsOnSafePad() {
+    /**
+     * The lab teleports a player who joined another world to its own centre five ticks after the join, which can
+     * land after a visit and move the client off the pad. Re-issue the visit instead of failing on that race.
+     *
+     * @return whether the client already stands on the pad; otherwise a visit was issued and the caller waits
+     */
+    private boolean onSafePad() {
         var afk = lab.mobPerformance().afk();
         var at = creator.getLocation();
-        check(at.getWorld().equals(world) && at.getBlockX() == afk[0] && at.getBlockY() == afk[1] && at.getBlockZ() == afk[2],
-                "the client is not on the safe AFK pad: " + at);
+        if (!at.getWorld().equals(world) || at.getBlockX() != afk[0] || at.getBlockY() != afk[1] || at.getBlockZ() != afk[2]) {
+            check(++visits <= MAX_VISITS, "the client is not on the safe AFK pad: " + at);
+            check(creator.performCommand("farmlab visit mobperf01"), "farmlab visit failed");
+            return false;
+        }
         for (var farm : lab.mobPerformance().benchmarkFarmGeometry()) {
             var area = new Cuboid(new BlockPosition(world.getUID(), farm.min()[0], farm.min()[1], farm.min()[2]),
                     new BlockPosition(world.getUID(), farm.max()[0], farm.max()[1], farm.max()[2])).expanded(ProfilingIsolation.MARGIN);
             var belt = new BoundingBox(area.min().x(), area.min().y(), area.min().z(), area.max().x() + 1, area.max().y() + 1, area.max().z() + 1);
             check(!creator.getBoundingBox().overlaps(belt), "the client stands inside the protection belt of " + farm.id());
         }
+        return true;
     }
 
     private void register(MobPerformanceWorld.Geometry farm) {

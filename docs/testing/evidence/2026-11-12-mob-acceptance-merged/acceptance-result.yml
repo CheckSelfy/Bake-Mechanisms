@@ -1,0 +1,68 @@
+exact-1200-tick-production:
+  mobperf01:
+    minecraft:chicken:
+      rate-per-20-ticks: 0.0111731843575419
+      carried-fraction: '0.6927374301675978'
+      actual: 0
+      expected: 0
+    minecraft:gold_nugget:
+      rate-per-20-ticks: 0.2569832402234637
+      carried-fraction: '0.9329608938547494'
+      actual: 15
+      expected: 15
+    minecraft:rotten_flesh:
+      rate-per-20-ticks: 2.9553072625698324
+      carried-fraction: '0.2290502793296088'
+      actual: 178
+      expected: 178
+  mobperf02:
+    minecraft:chicken:
+      rate-per-20-ticks: 0.12290502793296089
+      carried-fraction: '0.62011173184357518'
+      actual: 7
+      expected: 7
+    minecraft:gold_nugget:
+      rate-per-20-ticks: 3.0502793296089385
+      carried-fraction: '0.1173184357541870'
+      actual: 183
+      expected: 183
+    minecraft:rotten_flesh:
+      rate-per-20-ticks: 0.18994413407821228
+      carried-fraction: '0.77653631284916136'
+      actual: 11
+      expected: 11
+    minecraft:feather:
+      rate-per-20-ticks: 0.12849162011173185
+      carried-fraction: '0.96648044692737470'
+      actual: 7
+      expected: 7
+  mobperf03:
+    minecraft:chicken:
+      rate-per-20-ticks: 0.055865921787709494
+      carried-fraction: '0.463687150837988628'
+      actual: 3
+      expected: 3
+    minecraft:gold_nugget:
+      rate-per-20-ticks: 2.782122905027933
+      carried-fraction: '0.491620111731846'
+      actual: 167
+      expected: 167
+    minecraft:rotten_flesh:
+      rate-per-20-ticks: 0.41899441340782123
+      carried-fraction: '0.97765363128491626'
+      actual: 25
+      expected: 25
+original:
+  tps: 8.521
+  mspt-median: 115.603
+  mspt-p95: 129.86
+stasis:
+  tps: 20.001
+  mspt-median: 0.267
+  mspt-p95: 2.864
+spark-profiles:
+  original: profile-2026-11-12_20.23.52.sparkprofile
+  stasis: profile-2026-11-12_20.32.13.sparkprofile
+original-benchmark: 1794504232996-original.yml
+stasis-benchmark: 1794504733526-stasis.yml
+forbidden-operator-commands: []

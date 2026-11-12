@@ -1,0 +1,77 @@
+label: original
+world: f302d0cb-3efa-43be-aaf1-bea52a759037
+start-game-time: 677
+end-game-time: 1877
+elapsed-game-ticks: 1200
+requested-game-ticks: 1200
+elapsed-server-ticks: 1200
+server-ticks-without-game-tick: 0
+wall-seconds: 140.836
+tps: 8.521
+mspt:
+  samples: 1200
+  mean: 116.982
+  median: 115.603
+  p95: 129.86
+  max: 159.992
+safe-afk-profile-position:
+- 16
+- 89
+- 16
+players:
+  ReviewCreator:
+  - 16.5
+  - 89.0
+  - 16.5
+farm-states:
+  627da1f7-0c21-47d3-a468-607a2a865e8b: NEEDS_PROFILING
+  62faabd2-7661-4d1c-9270-2c8b091f58c0: NEEDS_PROFILING
+  a7ef75d7-d216-4dce-9261-fdef0926fdfd: NEEDS_PROFILING
+initial-inventory:
+  mobperf01:
+    minecraft:gold_nugget: 3
+    minecraft:rotten_flesh: 47
+  mobperf02:
+    minecraft:chicken: 1
+    minecraft:gold_nugget: 44
+    minecraft:rotten_flesh: 4
+    minecraft:feather: 2
+  mobperf03:
+    minecraft:gold_nugget: 44
+    minecraft:rotten_flesh: 5
+    minecraft:feather: 2
+final-inventory:
+  mobperf01:
+    minecraft:gold_nugget: 3
+    minecraft:rotten_flesh: 197
+  mobperf02:
+    minecraft:chicken: 1
+    minecraft:gold_nugget: 194
+    minecraft:rotten_flesh: 4
+    minecraft:feather: 2
+  mobperf03:
+    minecraft:gold_nugget: 194
+    minecraft:rotten_flesh: 5
+    minecraft:feather: 2
+inventory-delta:
+  mobperf01:
+    minecraft:gold_nugget: 0
+    minecraft:rotten_flesh: 150
+  mobperf02:
+    minecraft:chicken: 0
+    minecraft:feather: 0
+    minecraft:gold_nugget: 150
+    minecraft:rotten_flesh: 0
+  mobperf03:
+    minecraft:feather: 0
+    minecraft:gold_nugget: 150
+    minecraft:rotten_flesh: 0
+profile-rates-per-20-ticks:
+  627da1f7-0c21-47d3-a468-607a2a865e8b: &id001 {}
+  62faabd2-7661-4d1c-9270-2c8b091f58c0: *id001
+  a7ef75d7-d216-4dce-9261-fdef0926fdfd: *id001
+spark-profiler: started and stopped with --save-to-file
+spark-artifacts-created:
+- profile-2026-11-12_20.23.52.sparkprofile
+spark-artifacts:
+- profile-2026-11-12_20.23.52.sparkprofile

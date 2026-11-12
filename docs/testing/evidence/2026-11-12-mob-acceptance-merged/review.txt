@@ -1,0 +1,54 @@
+[20:20:31] [Server thread/INFO]: [spark] This server bundles the spark profiler. For more information please visit https://docs.papermc.io/paper/profiling
+[20:20:34] [Server thread/INFO]: [spark] Starting background profiler...
+[20:20:34] [Server thread/INFO]: [spark] The async-profiler engine is not supported for your os/arch (windows11/amd64), so the built-in Java engine will be used instead.
+[20:20:37] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_REGISTERED_AFTER_RESET tick=39 stale=0 registered=[mobperf01, mobperf02, mobperf03]
+[20:21:28] [Paper Async Task Handler Thread - 0/INFO]: [spark] The async-profiler engine is not supported for your os/arch (windows11/amd64), so the built-in Java engine will be used instead.
+[20:21:28] [Paper Async Task Handler Thread - 0/INFO]: [⚡]   /spark profiler stop
+[20:21:28] [Paper Async Task Handler Thread - 0/INFO]: [⚡]   /spark profiler open
+[20:23:52] [Paper Async Task Handler Thread - 0/INFO]: [⚡] Data has been written to: plugins\spark\profile-2026-11-12_20.23.52.sparkprofile
+[20:23:52] [Paper Async Task Handler Thread - 0/INFO]: [⚡] You can view the profile file using the web app @ https://spark.lucko.me/
+[20:23:52] [Paper Async Task Handler Thread - 0/INFO]: [spark] The async-profiler engine is not supported for your os/arch (windows11/amd64), so the built-in Java engine will be used instead.
+[20:23:52] [Paper Async Task Handler Thread - 0/INFO]: [⚡] Restarted the background profiler. (If you don't want this to happen, run: /spark profiler cancel)
+[20:23:53] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_BENCHMARK tick=1864 original 1794504232996-original.yml
+[20:23:53] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING_STARTED tick=1865 three farms in parallel from the safe AFK pad
+[20:25:03] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING tick=2465 server ticks=600 states={mobperf01=PROFILING, mobperf02=PROFILING, mobperf03=PROFILING}
+[20:26:14] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING tick=3065 server ticks=1200 states={mobperf01=PROFILING, mobperf02=PROFILING, mobperf03=PROFILING}
+[20:27:27] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING tick=3665 server ticks=1800 states={mobperf01=PROFILING, mobperf02=PROFILING, mobperf03=PROFILING}
+[20:28:39] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING tick=4265 server ticks=2400 states={mobperf01=PROFILING, mobperf02=PROFILING, mobperf03=PROFILING}
+[20:29:53] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING tick=4865 server ticks=3000 states={mobperf01=PROFILING, mobperf02=PROFILING, mobperf03=PROFILING}
+[20:31:08] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILING tick=5465 server ticks=3600 states={mobperf01=READY, mobperf02=READY, mobperf03=READY}
+[20:31:08] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILE tick=5465 mobperf01 {CHICKEN=0.0111731843575419, GOLD_NUGGET=0.2569832402234637, ROTTEN_FLESH=2.9553072625698324}
+[20:31:08] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILE tick=5465 mobperf02 {CHICKEN=0.12290502793296089, GOLD_NUGGET=3.0502793296089385, ROTTEN_FLESH=0.18994413407821228, FEATHER=0.12849162011173185}
+[20:31:08] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PROFILE tick=5465 mobperf03 {CHICKEN=0.055865921787709494, GOLD_NUGGET=2.782122905027933, ROTTEN_FLESH=0.41899441340782123}
+[20:31:09] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_STASIS tick=5466 all three farms entered stasis after 1 server ticks without operator cleanup
+[20:31:11] [Paper Async Task Handler Thread - 0/INFO]: [spark] The async-profiler engine is not supported for your os/arch (windows11/amd64), so the built-in Java engine will be used instead.
+[20:31:11] [Paper Async Task Handler Thread - 0/INFO]: [⚡]   /spark profiler stop
+[20:31:11] [Paper Async Task Handler Thread - 0/INFO]: [⚡]   /spark profiler open
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf01 CHICKEN expected=0 actual=0 fraction=0.6927374301675978
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf01 GOLD_NUGGET expected=15 actual=15 fraction=0.9329608938547494
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf01 ROTTEN_FLESH expected=178 actual=178 fraction=0.2290502793296088
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf02 CHICKEN expected=7 actual=7 fraction=0.62011173184357518
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf02 GOLD_NUGGET expected=183 actual=183 fraction=0.1173184357541870
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf02 ROTTEN_FLESH expected=11 actual=11 fraction=0.77653631284916136
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf02 FEATHER expected=7 actual=7 fraction=0.96648044692737470
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf03 CHICKEN expected=3 actual=3 fraction=0.463687150837988628
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf03 GOLD_NUGGET expected=167 actual=167 fraction=0.491620111731846
+[20:32:11] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_EXACT_1200 tick=6706 mobperf03 ROTTEN_FLESH expected=25 actual=25 fraction=0.97765363128491626
+[20:32:13] [Paper Async Task Handler Thread - 0/INFO]: [⚡] Data has been written to: plugins\spark\profile-2026-11-12_20.32.13.sparkprofile
+[20:32:13] [Paper Async Task Handler Thread - 0/INFO]: [⚡] You can view the profile file using the web app @ https://spark.lucko.me/
+[20:32:13] [Paper Async Task Handler Thread - 0/INFO]: [spark] The async-profiler engine is not supported for your os/arch (windows11/amd64), so the built-in Java engine will be used instead.
+[20:32:13] [Paper Async Task Handler Thread - 0/INFO]: [⚡] Restarted the background profiler. (If you don't want this to happen, run: /spark profiler cancel)
+[20:32:13] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_BENCHMARK tick=6749 stasis 1794504733526-stasis.yml
+[20:32:13] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_TPS tick=6750 original tps=8.521 mspt median=115.603 p95=129.86; stasis tps=20.001 mspt median=0.267 p95=2.864
+[20:32:14] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_RESTORED tick=6750 all three farms are back as NEEDS_PROFILING with their original blocks
+[20:32:14] [Server thread/INFO]: [BakeMobPerformanceReview] MOB_REVIEW_PASSED tick=6750 mode=acceptance: exact 1,200-tick production, TPS/MSPT recovery, restore; result plugins\BakeMobPerformanceReview\acceptance-result.yml
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-monitoring-1-thread-1
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-monitoring-1-thread-2
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-monitoring-1-thread-3
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-monitoring-1-thread-4
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-java-sampler-6-thread-1
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-java-sampler-6-thread-2
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-java-sampler-6-thread-3
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-java-sampler-6-thread-4
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-java-sampler-6-thread-5
+[20:32:14] [Paper Watchdog Thread/ERROR]: Current Thread: spark-java-sampler-6-thread-6
