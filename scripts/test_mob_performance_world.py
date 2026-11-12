@@ -43,13 +43,22 @@ class MobPerformanceWorldTests(unittest.TestCase):
             self.assertTrue(mechanism_chunks.isdisjoint(chunks))
             mechanism_chunks |= chunks
 
-        # The shared pad is at the centre of the compact 2-by-2 layout, five blocks above
-        # the spawners; every spawner centre must be inside vanilla's 16-block activation range.
-        afk_x, afk_y, afk_z = 14.5, 89, 14.5
+        # The shared pad sits in the gap between the farms' profiling protection belts (mechanism
+        # expanded by ProfilingIsolation.MARGIN = 2), five blocks above the spawners; every spawner
+        # centre must be inside vanilla's 16-block activation range. The earlier pad at (14, 89, 14)
+        # was inside all three belts.
+        margin = 2
+        afk_block = (fixture['spacing'] - 1, 89, fixture['spacing'] - 1)
+        afk_x, afk_y, afk_z = afk_block[0] + .5, afk_block[1], afk_block[2] + .5
         for index in range(fixture['default_farms']):
-            x = (index % columns) * fixture['spacing'] + 6
-            z = (index // columns) * fixture['spacing'] + 6
-            self.assertLess(((x - afk_x) ** 2 + (84 - afk_y) ** 2 + (z - afk_z) ** 2) ** .5, 16)
+            x = (index % columns) * fixture['spacing']
+            z = (index // columns) * fixture['spacing']
+            belt_x = range(x - margin, x + 12 + margin + 1)
+            belt_y = range(64 - margin, 88 + margin + 1)
+            belt_z = range(z - margin, z + 12 + margin + 1)
+            self.assertFalse(afk_block[0] in belt_x and afk_block[1] in belt_y and afk_block[2] in belt_z,
+                             f'AFK pad inside the protection belt of farm {index + 1}')
+            self.assertLess(((x + 6.5 - afk_x) ** 2 + (84.5 - afk_y) ** 2 + (z + 6.5 - afk_z) ** 2) ** .5, 16)
 
     def test_uses_the_checked_in_real_skeleton_structure(self):
         manifest = json.loads((ROOT / 'test-worlds/ppl9-mobs/farms.json').read_text(encoding='utf-8'))

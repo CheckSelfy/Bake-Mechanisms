@@ -1,6 +1,9 @@
 package io.github.checkselfy.bakemechanisms.lab;
 
 import com.google.gson.Gson;
+import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
+import io.github.checkselfy.bakemechanisms.marking.Cuboid;
+import io.github.checkselfy.bakemechanisms.profiling.ProfilingIsolation;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -104,16 +107,22 @@ final class MobPerformanceWorld {
             farms.add(new Farm("mobperf%02d".formatted(i + 1), (i % columns) * manifest.spacing(),
                     (i / columns) * manifest.spacing()));
         }
-        int afkX = (columns - 1) * manifest.spacing() / 2 + 6;
-        int afkZ = ((manifest.default_farms() + columns - 1) / columns - 1) * manifest.spacing() / 2 + 6;
-        world.setSpawnLocation(afkX, 89, afkZ);
+        var afk = safeAfkPosition();
+        world.setSpawnLocation(afk[0], afk[1], afk[2]);
         if (!Files.exists(marker)) {
             for (var farm : farms) build(farm);
-            world.getBlockAt(afkX, 88, afkZ).setType(Material.GLASS, false);
             Files.createDirectories(marker.getParent());
             Files.writeString(marker, "world=" + world.getUID() + "\nfarms=" + farms.size() + "\n");
         }
-        plugin.getLogger().info("FARM_LAB_MOB_PERFORMANCE_READY farms=" + farms.size() + " world=" + world.getName());
+        // Idempotent, so labs generated with the earlier pad inside the protection belts are moved too.
+        var oldPad = world.getBlockAt((columns - 1) * manifest.spacing() / 2 + 6, AFK_Y - 1,
+                ((manifest.default_farms() + columns - 1) / columns - 1) * manifest.spacing() / 2 + 6);
+        if (oldPad.getType() == Material.GLASS && (oldPad.getX() != afk[0] || oldPad.getZ() != afk[2])) {
+            oldPad.setType(Material.AIR, false);
+        }
+        world.getBlockAt(afk[0], afk[1] - 1, afk[2]).setType(Material.GLASS, false);
+        plugin.getLogger().info("FARM_LAB_MOB_PERFORMANCE_READY farms=" + farms.size() + " world=" + world.getName()
+                + " afk=" + coordinates(afk));
     }
 
     boolean contains(String id) { return farms.stream().anyMatch(farm -> farm.id().equals(id)); }
@@ -123,7 +132,7 @@ final class MobPerformanceWorld {
         for (var farm : farms) sender.sendMessage(farm.id() + ": GOLD " + coordinates(farm.min()) + " -> LIME "
                 + coordinates(farm.max()) + "; double output chest " + coordinates(farm.output()));
         sender.sendMessage("Safe benchmark AFK/profile position: " + coordinates(afkPosition())
-                + ". It is outside every mechanism and output-protection buffer.");
+                + ". It is outside every mechanism and its profiling protection belt and activates every spawner.");
     }
 
     void navigate(Player player, String[] args) {
@@ -150,6 +159,37 @@ final class MobPerformanceWorld {
     private int[] afkPosition() {
         var spawn = world.getSpawnLocation();
         return new int[]{spawn.getBlockX(), spawn.getBlockY(), spawn.getBlockZ()};
+    }
+
+    /** Standing block of the shared AFK/profile pad, in the gap between the first farms' protection belts. */
+    static final int AFK_Y = 89;
+    /** Vanilla spawners run only with a player closer than this to the spawner centre. */
+    static final double SPAWNER_RANGE = 16;
+
+    /**
+     * The pad block column must lie outside every farm's profiling protection area (the mechanism expanded by
+     * {@link ProfilingIsolation#MARGIN}), or profiling would push the player out or refuse to start, and within
+     * spawner range of every farm, or the spawners stop. The earlier pad at (14, 89, 14) was inside all three
+     * belts. Throws instead of building an unusable benchmark.
+     */
+    int[] safeAfkPosition() {
+        int gap = manifest.spacing() - 1;
+        var afk = new int[]{gap, AFK_Y, gap};
+        var player = new BoundingBox(afk[0] + .2, afk[1], afk[2] + .2, afk[0] + .8, afk[1] + 1.8, afk[2] + .8);
+        for (var farm : farms) {
+            var area = new Cuboid(new BlockPosition(world.getUID(), farm.x(), 64, farm.z()),
+                    new BlockPosition(world.getUID(), farm.x() + 12, 88, farm.z() + 12)).expanded(ProfilingIsolation.MARGIN);
+            var belt = new BoundingBox(area.min().x(), area.min().y(), area.min().z(),
+                    area.max().x() + 1, area.max().y() + 1, area.max().z() + 1);
+            if (player.overlaps(belt)) {
+                throw new IllegalStateException("AFK pad " + coordinates(afk) + " is inside the protection belt of " + farm.id());
+            }
+            double dx = farm.x() + 6.5 - (afk[0] + .5), dy = 84.5 - afk[1], dz = farm.z() + 6.5 - (afk[2] + .5);
+            if (Math.sqrt(dx * dx + dy * dy + dz * dz) >= SPAWNER_RANGE) {
+                throw new IllegalStateException("AFK pad " + coordinates(afk) + " cannot activate the spawner of " + farm.id());
+            }
+        }
+        return afk;
     }
 
     private void build(Farm farm) throws Exception {
