@@ -253,6 +253,7 @@ tasks.register<Jar>("farmLabJar") {
     from(farmLab.output) { exclude("**/FarmLabReviewPlugin*", "**/SlimeGallery*") }
     from("test-worlds/ppl9") { into("fixtures"); exclude("README.md") }
     from("test-worlds/ppl9-mobs") { into("mob-fixtures"); exclude("README.md") }
+    from("test-worlds/ppl9-mobs-performance") { into("mob-performance-fixtures"); exclude("README.md") }
 }
 tasks.register<Jar>("slimeGalleryJar") {
     group = "verification"

@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "world": "farm_lab_mob_performance",
+  "template": "skeleton",
+  "default_farms": 16,
+  "maximum_farms": 32,
+  "spacing": 32,
+  "source": "ppl9-farm skeleton spawner extracted in test-worlds/ppl9-mobs",
+  "adaptations": [
+    "Every plot is an independent copy of the extracted skeleton spawner mechanism, with its own external double-chest output.",
+    "The source's unaudited ender chest and comparator tiles are removed from each disposable copy.",
+    "Each source spawner is configured with the existing lab's 80..120-tick delay, spawn count 4 and max nearby 24 so that the grid supplies sustained native entity, AI, combat, drop and hopper work."
+  ]
+}

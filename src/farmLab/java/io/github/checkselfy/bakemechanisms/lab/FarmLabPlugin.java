@@ -49,6 +49,7 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
     private Manifest manifest;
     private World world;
     private MobFarmPlots mobs;
+    private MobPerformanceWorld mobPerformance;
 
     public List<Farm> farms() { return manifest.farms(); }
     public World world() { return world; }
@@ -103,6 +104,8 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
             }
             mobs = new MobFarmPlots(this, world);
             mobs.initialize();
+            mobPerformance = new MobPerformanceWorld(this);
+            mobPerformance.initialize();
             Objects.requireNonNull(getCommand("farmlab")).setExecutor(this);
             getServer().getPluginManager().registerEvents(this, this);
             getLogger().info("FARM_LAB_READY farms=" + farms().size() + " world=" + world.getName());
@@ -296,6 +299,7 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                 for (var farm : farms()) sender.sendMessage(farm.id() + ": GOLD " + coordinates(farm.destination())
                         + " -> LIME " + coordinates(farm.maximum()) + "; output barrel " + coordinates(farm.output()));
                 mobs.list(sender);
+                mobPerformance.list(sender);
             } else if (args.length == 1 && args[0].equals("check-mobs")) {
                 mobs.check(sender);
             } else if (args.length == 3 && args[0].equals("compare")) {
@@ -322,6 +326,10 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
                 } else if (args.length >= 2) {
                     if (mobs.contains(args[1])) {
                         mobs.navigate(player, args);
+                        return true;
+                    }
+                    if (mobPerformance.contains(args[1])) {
+                        mobPerformance.navigate(player, args);
                         return true;
                     }
                     var farm = find(args[1]);
