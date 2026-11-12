@@ -182,9 +182,15 @@ tasks.register("resetFarmLab") {
     group = "application"
     description = "Deletes the local server's farm_lab world and the Bake Mechanisms data that referred to it; " +
         "the next runServer rebuilds the lab from test-worlds."
-    val serverDir = layout.projectDirectory.dir("server").asFile
+    // -PfarmLabServer=<dir> resets another server directory (used by scripts/test_mob_performance_world.py).
+    val serverDir = providers.gradleProperty("farmLabServer").orNull?.let { file(it) }
+        ?: layout.projectDirectory.dir("server").asFile
     doLast {
-        val lock = serverDir.resolve("world/session.lock")
+        // The lab worlds live inside the server's level folder (level-name; "world" by default, "lobby" in scripts).
+        val level = serverDir.resolve("server.properties").takeIf { it.isFile }?.readLines()
+            ?.firstOrNull { it.startsWith("level-name=") }?.substringAfter('=')?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "world"
+        val lock = serverDir.resolve("$level/session.lock")
         if (lock.exists()) {
             RandomAccessFile(lock, "rw").use { file ->
                 val held = try { file.channel.tryLock() } catch (e: OverlappingFileLockException) { null }
@@ -193,30 +199,45 @@ tasks.register("resetFarmLab") {
             }
         }
         val labData = serverDir.resolve("plugins/BakeFarmLab")
-        // The crop and mob-performance labs are separate generated worlds.  Keep both
-        // ids: otherwise resetting after the mob benchmark has registered farms leaves
-        // its old registrations behind.
+        // Every lab world this server ever generated (plugins/BakeFarmLab-worlds.txt survives resets), plus the
+        // current crop and mob-performance markers for labs started before that history existed.
+        val history = serverDir.resolve("plugins/BakeFarmLab-worlds.txt").takeIf { it.isFile }?.readLines().orEmpty()
         val labWorlds = buildSet {
+            history.filter { it.startsWith("lab=") }.map { it.substringAfter('=').trim() }.filter { it.isNotEmpty() }
+                .forEach(::add)
             labData.resolve("world-uid.txt").takeIf { it.isFile }?.readText()?.trim()
                 ?.takeIf { it.isNotEmpty() }?.let(::add)
-            labData.resolve("mob-performance-v7.txt").takeIf { it.isFile }?.readLines()
-                ?.firstOrNull { it.startsWith("world=") }?.substringAfter('=')?.trim()
-                ?.takeIf { it.isNotEmpty() }?.let(::add)
+            labData.listFiles { file -> file.name.startsWith("mob-performance-v") && file.name.endsWith(".txt") }
+                .orEmpty().forEach { marker ->
+                    marker.readLines().firstOrNull { it.startsWith("world=") }?.substringAfter('=')?.trim()
+                        ?.takeIf { it.isNotEmpty() }?.let(::add)
+                }
         }
+        // The server's own (non-lab) worlds as of the last lab start; their registrations are kept.
+        val serverWorlds = history.filter { it.startsWith("server=") }.map { it.substringAfter('=').trim() }.toSet()
         val farms = serverDir.resolve("plugins/BakeMechanisms/farms")
         farms.listFiles { file -> file.isDirectory }.orEmpty().forEach { farm ->
             val world = farm.resolve("farm.yml").takeIf { it.isFile }?.readLines()
                 ?.firstOrNull { it.startsWith("world:") }?.substringAfter(":")?.trim()?.trim('\'', '"')
-            // Without a recorded lab world, every registration is treated as the lab's: this is a local test server.
-            if (labWorlds.isEmpty() || world == null || world in labWorlds) {
+            val stale = when {
+                world == null -> true
+                world in labWorlds -> true
+                // A world that is not one of the server's own was a lab world generated before the history existed.
+                serverWorlds.isNotEmpty() -> world !in serverWorlds
+                // Without any record, every registration is treated as the lab's: this is a local test server.
+                else -> labWorlds.isEmpty()
+            }
+            if (stale) {
                 logger.lifecycle("Deleting farm registration ${farm.name} (world $world).")
                 farm.deleteRecursively()
+            } else {
+                logger.lifecycle("Keeping farm registration ${farm.name} (world $world is not a lab world).")
             }
         }
         // Departure positions of players; recreated on the next logout.
         serverDir.resolve("plugins/BakeMechanisms/offline-players.dat").delete()
-        serverDir.resolve("world/dimensions/minecraft/farm_lab").deleteRecursively()
-        serverDir.resolve("world/dimensions/minecraft/farm_lab_mob_performance").deleteRecursively()
+        serverDir.resolve("$level/dimensions/minecraft/farm_lab").deleteRecursively()
+        serverDir.resolve("$level/dimensions/minecraft/farm_lab_mob_performance").deleteRecursively()
         labData.deleteRecursively()
         logger.lifecycle("Farm lab reset; runServer will rebuild it from test-worlds.")
     }

@@ -1,5 +1,8 @@
 """Validate the compact PPL9-derived zombified-piglin world layout without starting Paper."""
 import json
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 import unittest
 
@@ -61,7 +64,64 @@ class MobPerformanceWorldTests(unittest.TestCase):
         self.assertIn('Safe benchmark AFK/profile position', source)
         self.assertIn('ResolvedOutputInventory.count', lab)
         self.assertIn('profile-rates-per-20-ticks', lab)
-        self.assertIn('mob-performance-v7.txt', build)
+        self.assertIn('mob-performance-v', build)
+        self.assertIn('BakeFarmLab-worlds.txt', build)
+
+
+class ResetFarmLabTests(unittest.TestCase):
+    """Runs the real Gradle task against a throwaway server directory."""
+
+    @staticmethod
+    def _farm(server, name, world):
+        farm = server / 'plugins/BakeMechanisms/farms' / name
+        farm.mkdir(parents=True)
+        (farm / 'farm.yml').write_text(f'format: 2\nid: {name}\nworld: {world}\n', encoding='utf-8')
+
+    @staticmethod
+    def _reset(server):
+        wrapper = ROOT / ('gradlew.bat' if os.name == 'nt' else 'gradlew')
+        subprocess.run([str(wrapper), 'resetFarmLab', f'-PfarmLabServer={server}', '-q', '--console=plain'],
+                       cwd=ROOT, check=True, capture_output=True, timeout=600)
+
+    def test_reset_drops_registrations_of_every_earlier_lab_world_and_keeps_server_worlds(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            server = Path(temporary)
+            lab = server / 'plugins/BakeFarmLab'
+            lab.mkdir(parents=True)
+            (lab / 'world-uid.txt').write_text('crop-now\n', encoding='utf-8')
+            (lab / 'mob-performance-v7.txt').write_text('world=mobs-now\nfarms=3\n', encoding='utf-8')
+            (server / 'plugins/BakeFarmLab-worlds.txt').write_text(
+                '# history\nlab=crop-earlier\nlab=crop-now\nserver=overworld\nserver=nether\n', encoding='utf-8')
+            for name, world in [('earlier-lab', 'crop-earlier'), ('crop-lab', 'crop-now'), ('mob-lab', 'mobs-now'),
+                                ('before-history', 'mobs-generated-before-history'), ('survival', 'overworld'),
+                                ('nether', 'nether')]:
+                self._farm(server, name, world)
+            self._reset(server)
+            remaining = sorted(path.name for path in (server / 'plugins/BakeMechanisms/farms').iterdir())
+            self.assertEqual(remaining, ['nether', 'survival'])
+            self.assertFalse(lab.exists())
+            self.assertTrue((server / 'plugins/BakeFarmLab-worlds.txt').is_file(), 'the history survives the reset')
+
+    def test_reset_without_history_keeps_registrations_outside_the_current_lab_worlds(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            server = Path(temporary)
+            lab = server / 'plugins/BakeFarmLab'
+            lab.mkdir(parents=True)
+            (lab / 'world-uid.txt').write_text('crop-now\n', encoding='utf-8')
+            (lab / 'mob-performance-v7.txt').write_text('world=mobs-now\n', encoding='utf-8')
+            for name, world in [('crop-lab', 'crop-now'), ('mob-lab', 'mobs-now'), ('survival', 'overworld')]:
+                self._farm(server, name, world)
+            # Script-prepared lab servers use level-name=lobby: the lab dimensions live there, not in world/.
+            (server / 'server.properties').write_text('online-mode=false\nlevel-name=lobby\n', encoding='utf-8')
+            lab_dimension = server / 'lobby/dimensions/minecraft/farm_lab_mob_performance'
+            lab_dimension.mkdir(parents=True)
+            overworld = server / 'lobby/dimensions/minecraft/overworld'
+            overworld.mkdir(parents=True)
+            self._reset(server)
+            remaining = sorted(path.name for path in (server / 'plugins/BakeMechanisms/farms').iterdir())
+            self.assertEqual(remaining, ['survival'])
+            self.assertFalse(lab_dimension.exists())
+            self.assertTrue(overworld.exists())
 
 
 if __name__ == '__main__':

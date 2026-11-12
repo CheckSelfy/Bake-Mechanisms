@@ -107,6 +107,10 @@ public final class FarmLabPlugin extends JavaPlugin implements Listener {
             mobs.initialize();
             mobPerformance = new MobPerformanceWorld(this);
             mobPerformance.initialize();
+            // Every lab world ever generated here, so resetFarmLab also drops registrations of earlier lab worlds.
+            var labWorlds = java.util.List.of(world.getUID(), mobPerformanceWorld().getUID());
+            LabWorldHistory.record(getServer().getPluginsFolder().toPath().resolve(LabWorldHistory.FILE), labWorlds,
+                    getServer().getWorlds().stream().map(World::getUID).filter(id -> !labWorlds.contains(id)).toList());
             Objects.requireNonNull(getCommand("farmlab")).setExecutor(this);
             getServer().getPluginManager().registerEvents(this, this);
             getLogger().info("FARM_LAB_READY farms=" + farms().size() + " world=" + world.getName());
