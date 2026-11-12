@@ -14,6 +14,7 @@ import io.github.checkselfy.bakemechanisms.marking.MarkingController;
 import io.github.checkselfy.bakemechanisms.marking.PaperOutputResolver;
 import io.github.checkselfy.bakemechanisms.marking.ReadyMechanismWatcher;
 import io.github.checkselfy.bakemechanisms.profiling.ChunkTickets;
+import io.github.checkselfy.bakemechanisms.profiling.GameTickGate;
 import io.github.checkselfy.bakemechanisms.profiling.PaperProfilingWorld;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingProtection;
 import io.github.checkselfy.bakemechanisms.profiling.ProfilingTransportProtection;
@@ -161,10 +162,11 @@ public final class BakeMechanismsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ProfilingTransportProtection(profiling), this);
         getServer().getPluginManager().registerEvents(new ReadyMechanismWatcher(registry, getServer()), this);
         getServer().getPluginManager().registerEvents(new StasisProtection(stasis), this);
-        getServer().getScheduler().runTaskTimer(this, () -> {
+        // Profiles and stasis production are rates per game tick: a /tick freeze stops the worlds but not this task.
+        getServer().getScheduler().runTaskTimer(this, GameTickGate.of(getServer().getServerTickManager(), () -> {
             profiling.tick();
             emulation.tick();
-        }, 1L, 1L);
+        }), 1L, 1L);
         getServer().getScheduler().runTaskTimer(this, marking::refreshActionBars, 20L, 20L);
         getLogger().info("Bake Mechanisms enabled");
     }

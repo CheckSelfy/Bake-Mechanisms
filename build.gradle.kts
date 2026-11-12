@@ -333,6 +333,7 @@ tasks.register<JavaExec>("stasisSmoke") {
             || !log.contains("PROFILING_INPUT_SMOKE_PASSED")
             || !log.contains("PROFILING_NATURAL_INPUT_SMOKE_PASSED")
             || !log.contains("SLIME_FILLER_SMOKE_PASSED")
+            || !log.contains("EMULATION_RATE_SMOKE_PASSED")
             || log.contains("BLOCK_STASIS_SMOKE_FAILED")) {
             throw GradleException("Stasis smoke check failed. See run/stasis-smoke/logs/latest.log")
         }

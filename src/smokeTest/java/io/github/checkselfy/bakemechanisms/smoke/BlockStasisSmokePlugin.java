@@ -67,8 +67,13 @@ public final class BlockStasisSmokePlugin extends JavaPlugin {
                                 getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", profilingError);
                                 getServer().shutdown();
                             } else SlimeFillerCheck.run(this, fillerError -> {
-                                if(fillerError!=null) getLogger().log(Level.SEVERE,"BLOCK_STASIS_SMOKE_FAILED",fillerError);
-                                getServer().shutdown();
+                                if (fillerError != null) {
+                                    getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", fillerError);
+                                    getServer().shutdown();
+                                } else EmulationRateCheck.run(this, rateError -> {
+                                    if (rateError != null) getLogger().log(Level.SEVERE, "BLOCK_STASIS_SMOKE_FAILED", rateError);
+                                    getServer().shutdown();
+                                });
                             });
                         });
                     });
