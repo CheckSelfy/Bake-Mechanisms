@@ -30,9 +30,6 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.IronGolem;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.generator.WorldInfo;
 import org.bukkit.loot.Lootable;
@@ -89,19 +86,8 @@ final class MobPerformanceWorld {
         world.setGameRule(GameRules.RANDOM_TICK_SPEED, 3);
         world.setTime(6000);
         world.setDifficulty(Difficulty.HARD);
-        plugin.getServer().getPluginManager().registerEvents(new Listener() {
-            @EventHandler(ignoreCancelled = true)
-            public void onSpawnerSpawn(CreatureSpawnEvent event) {
-                if (event.getSpawnReason() == CreatureSpawnEvent.SpawnReason.SPAWNER
-                        && event.getEntityType() == EntityType.ZOMBIFIED_PIGLIN
-                        && event.getLocation().getWorld().equals(world)) {
-                    // The production snapshot contract preserves entities; vanilla spawner mobs otherwise
-                    // arrive non-persistent and would be rejected before stasis can remove anything.
-                    event.getEntity().setPersistent(true);
-                }
-            }
-        }, plugin);
-
+        // Spawner piglins stay as vanilla spawns them: non-persistent. Stasis captures them natively (#12), so
+        // the benchmark must not mutate persistence, which would also change their despawn behaviour.
         int columns = (int) Math.ceil(Math.sqrt(manifest.default_farms()));
         for (int i = 0; i < manifest.default_farms(); i++) {
             farms.add(new Farm("mobperf%02d".formatted(i + 1), (i % columns) * manifest.spacing(),
