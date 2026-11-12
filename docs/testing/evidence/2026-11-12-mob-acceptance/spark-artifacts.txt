@@ -1,0 +1,2 @@
+plugins/spark/profile-2026-11-12_16.56.24.sparkprofile	404084	sha256=b0e71df5c8e818dc5acc55d4879a4a473a5dae65c0d1fd8c5f516facb85cb3b5
+plugins/spark/profile-2026-11-12_17.03.02.sparkprofile	215161	sha256=824219ef8c8b027f46b60cfaf2ac90844ab82907eecbdbac2d93b28b10d618a4

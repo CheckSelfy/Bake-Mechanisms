@@ -186,7 +186,7 @@ def mob_review(server, mode, port=25566, evidence=None):
             for record in sorted(benchmarks.glob('*.yml')) if benchmarks.exists() else []:
                 shutil.copy2(record, evidence / record.name)
         log = (server / 'logs' / 'latest.log').read_text(encoding='utf-8', errors='replace')
-        (evidence / 'review.log').write_text('\n'.join(line for line in log.splitlines()
+        (evidence / 'review.txt').write_text('\n'.join(line for line in log.splitlines()
                                                      if 'MOB_REVIEW_' in line or 'spark' in line.lower()) + '\n', encoding='utf-8')
         spark = server / 'plugins' / 'spark'
         artifacts = []
