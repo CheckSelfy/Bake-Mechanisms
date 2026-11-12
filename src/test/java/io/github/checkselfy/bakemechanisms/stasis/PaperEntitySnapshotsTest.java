@@ -279,7 +279,36 @@ class PaperEntitySnapshotsTest {
         when(rider.isPersistent()).thenReturn(false);
         when(rider.isValid()).thenReturn(false);
         when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
-        assertThrows(IllegalStateException.class, () -> snapshots.capture(world, region));
+        // A rider in its death animation leaves its chicken within 20 ticks: retryable, never serialized.
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void livingRiderOfADyingVehicleIsWaitedForInsteadOfSkipped() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(chicken.isValid()).thenReturn(false);
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken, rider));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        verifyNoInteractions(serialization);
+    }
+
+    @Test void mountingDismountingAndUnaddedEntitiesAreRetryableAndNeverSerialized() {
+        var chicken = mock(org.bukkit.entity.Chicken.class);
+        var rider = mock(org.bukkit.entity.PigZombie.class);
+        initialize(chicken, EntityType.CHICKEN);
+        initialize(rider, EntityType.ZOMBIFIED_PIGLIN);
+        // The chicken lists the rider, the rider no longer names the chicken: a dismount in progress.
+        when(chicken.getPassengers()).thenReturn(List.of(rider));
+        when(world.getNearbyEntities(any(BoundingBox.class))).thenReturn(List.of(chicken));
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
+        when(rider.getVehicle()).thenReturn(chicken);
+        when(rider.isInWorld()).thenReturn(false);
+        assertThrows(EntityInTransitionException.class, () -> snapshots.capture(world, region));
         verifyNoInteractions(serialization);
     }
 
@@ -386,6 +415,7 @@ class PaperEntitySnapshotsTest {
         when(entity.getUniqueId()).thenReturn(UUID.randomUUID());
         when(entity.getType()).thenReturn(type);
         when(entity.isValid()).thenReturn(true);
+        when(entity.isInWorld()).thenReturn(true);
         when(entity.isPersistent()).thenReturn(true);
         when(entity.getBoundingBox()).thenReturn(new BoundingBox(0, 64, 0, 0.8, 65, 0.8));
         when(entity.getLocation()).thenReturn(new org.bukkit.Location(world, 0, 64, 0));

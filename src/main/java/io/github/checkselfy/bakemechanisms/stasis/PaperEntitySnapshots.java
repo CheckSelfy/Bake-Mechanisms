@@ -86,11 +86,7 @@ public final class PaperEntitySnapshots {
                     throw new IllegalStateException("Закройте инвентарь транспорта перед стазисом.");
                 }
             }
-            for (var entity : members) {
-                if (!entity.isValid()) {
-                    throw new IllegalStateException("Сущность " + entity.getType() + " в группе транспорта удаляется или умирает.");
-                }
-            }
+            requireStable(members);
             // Spawner mobs are commonly non-persistent (not written to chunk files). Paper refuses to serialize them
             // without FORCE; the NBT keeps Bukkit.persist=false, so the restored mob stays non-persistent. FORCE also
             // admits dead or removed entities, which is why every member was checked to be valid above.
@@ -255,6 +251,29 @@ public final class PaperEntitySnapshots {
                 continue;
             }
             PaperMobTargets.set(mob, living);
+        }
+    }
+
+    /**
+     * Rejects, as retryable, a passenger tree caught between two stable states. Between ticks a lone dying or
+     * removed entity is simply skipped (its loot is already dropped), but one still linked to a living vehicle or
+     * passenger would be written into, or torn out of, that member's NBT.
+     */
+    private static void requireStable(List<Entity> members) {
+        for (var entity : members) {
+            if (!entity.isValid()) {
+                throw new EntityInTransitionException("Сущность " + entity.getType() + " в группе транспорта умирает или удаляется.");
+            }
+            if (!entity.isInWorld()) {
+                throw new EntityInTransitionException("Сущность " + entity.getType() + " ещё добавляется в мир.");
+            }
+            for (var passenger : entity.getPassengers()) {
+                var vehicle = passenger.getVehicle();
+                if (vehicle == null || !vehicle.getUniqueId().equals(entity.getUniqueId())) {
+                    throw new EntityInTransitionException("Пассажир " + passenger.getType() + " садится на "
+                            + entity.getType() + " или высаживается.");
+                }
+            }
         }
     }
 

@@ -138,6 +138,46 @@ class StasisCommandsTest {
         assertTrue(tasks.isEmpty());
     }
 
+    @Test void entitiesInTransitionAreWaitedOutAutomaticallyWithOneNotice() {
+        var player = player(creator);
+        var id = farm().id();
+        var tasks = new java.util.ArrayDeque<Runnable>();
+        var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
+        var dying = new EntityInTransitionException("Сущность ZOMBIFIED_PIGLIN в группе транспорта умирает или удаляется.");
+        // A jockey rider in its 20-tick death animation, then a rider dismounting, then stable.
+        var stubbing = doThrow(dying);
+        for (int i = 1; i < 20; i++) stubbing = stubbing.doThrow(dying);
+        stubbing.doThrow(new EntityInTransitionException("Пассажир ZOMBIFIED_PIGLIN садится на CHICKEN или высаживается."))
+                .doNothing().when(service).enter(id, creator);
+        deferred.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
+        int retries = 0;
+        while (!tasks.isEmpty()) {
+            assertTrue(++retries <= EntityInTransitionException.MAX_RETRIES, "unbounded retry loop");
+            tasks.removeFirst().run();
+        }
+        assertEquals(21, retries);
+        verify(service, times(22)).enter(id, creator);
+        verify(player, times(1)).sendMessage(contains("Повторяем стазис автоматически"));
+        verify(player).sendMessage(contains("STASIS"));
+    }
+
+    @Test void entitiesThatNeverSettleGiveUpAfterTheirBudgetWithTheReason() {
+        var player = player(creator);
+        var id = farm().id();
+        var tasks = new java.util.ArrayDeque<Runnable>();
+        var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
+        var unstable = new EntityInTransitionException("Сущности чанка 1, 2 ещё загружаются.");
+        doThrow(unstable).when(service).enter(id, creator);
+        deferred.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
+        int retries = 0;
+        while (!tasks.isEmpty()) {
+            assertTrue(++retries <= EntityInTransitionException.MAX_RETRIES, "unbounded retry loop");
+            tasks.removeFirst().run();
+        }
+        assertEquals(EntityInTransitionException.MAX_RETRIES, retries);
+        verify(player).sendMessage(unstable.getMessage());
+    }
+
     private static void checkRetryLimit(int retries) { assertTrue(retries <= 10, "unbounded retry loop"); }
 
     private FarmRegistry.MarkedFarm farm() {
