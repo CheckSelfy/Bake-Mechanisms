@@ -1,6 +1,7 @@
 package io.github.checkselfy.bakemechanisms.stasis;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.Mockito.*;
 
 import io.github.checkselfy.bakemechanisms.marking.BlockPosition;
@@ -129,16 +130,37 @@ class StasisCommandsTest {
             checkRetryLimit(++retries);
             tasks.removeFirst().run();
         }
-        assertEquals(10, retries);
-        verify(service, times(11)).enter(id, creator);
-        verify(player).sendMessage(new PistonInMotionException().getMessage());
+        assertEquals(StasisStabilizer.MAX_WAIT_TICKS, retries);
+        verify(service, times(StasisStabilizer.MAX_WAIT_TICKS + 1)).enter(id, creator);
+        verify(player).sendMessage(and(startsWith(new PistonInMotionException().getMessage()), contains("READY")));
         doNothing().when(service).enter(id, creator);
         deferred.onCommand(player, command, "bake", args);
-        verify(service, times(12)).enter(id, creator);
+        verify(service, times(StasisStabilizer.MAX_WAIT_TICKS + 2)).enter(id, creator);
         assertTrue(tasks.isEmpty());
     }
 
-    private static void checkRetryLimit(int retries) { assertTrue(retries <= 10, "unbounded retry loop"); }
+    @Test void dyingJockeyRetriesAutomaticallyAndReportsProgressToThePlayer() {
+        var player = player(creator);
+        var id = farm().id();
+        var tasks = new java.util.ArrayDeque<Runnable>();
+        var deferred = new StasisCommands(delegate, registry, service, Logger.getAnonymousLogger(), tasks::add);
+        var dying = new EntityInTransitionException("Сущность ZOMBIFIED_PIGLIN погибает или удаляется.");
+        var stubbing = doThrow(dying);
+        for (int i = 0; i < 24; i++) stubbing = stubbing.doThrow(dying);
+        stubbing.doNothing().when(service).enter(id, creator);
+        deferred.onCommand(player, command, "bake", new String[] { "stasis", "--id", id.toString() });
+        while (!tasks.isEmpty()) tasks.removeFirst().run();
+        verify(service, times(26)).enter(id, creator);
+        var order = inOrder(player);
+        order.verify(player).sendMessage(and(startsWith("Механизм стабилизируется"), contains("погибает")));
+        order.verify(player).sendMessage(and(contains("20/" + StasisStabilizer.MAX_WAIT_TICKS), contains("погибает")));
+        order.verify(player).sendMessage(contains("STASIS"));
+        verify(player, times(3)).sendMessage(anyString());
+    }
+
+    private static void checkRetryLimit(int retries) {
+        assertTrue(retries <= StasisStabilizer.MAX_WAIT_TICKS, "unbounded retry loop");
+    }
 
     private FarmRegistry.MarkedFarm farm() {
         var world = UUID.randomUUID();

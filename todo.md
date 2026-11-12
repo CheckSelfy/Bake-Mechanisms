@@ -40,6 +40,8 @@ This can proceed independently from production-rate work.
 
 Owner: one person focused on `stasis/`, `PaperEntitySnapshots`, and native Paper integration tests.
 
+Status (branch `feature/BM-34-gleb`): implemented. Root cause: Paper's `isValid()` is false for a mob in its 20-tick death animation, and `serializeEntity(PASSENGERS)` rejects such a tree as "invalid or non-persistent". Standalone corpses are skipped and discarded with the originals; transitional trees raise `EntityInTransitionException`, which `StasisStabilizer` retries every tick for up to 100 ticks with player progress messages. Passenger-coordinate validation is replaced by vehicle-topology validation. `remove` proves no saved original survives. Evidence: `stasisSmoke` → `NATIVE_PIGLIN_STASIS_SMOKE_PASSED`; `entityNbtSmoke` restart includes a piglin chicken jockey. See `docs/development/stasis-integration.md`.
+
 ## Stream C — benchmark and lab reliability
 
 This can also proceed in parallel.

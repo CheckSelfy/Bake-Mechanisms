@@ -206,7 +206,10 @@ public final class PaperStasisWorld implements StasisWorld {
     }
 
     @Override public void removeEntities(MarkedFarm farm, byte[] data) {
-        entities.remove(SnapshotPayload.decode(data).groups());
+        var region = farm.mechanism();
+        var world = world(region);
+        loadChunks(world, region);
+        entities.remove(world, region, SnapshotPayload.decode(data).groups());
     }
 
     private World world(Cuboid region) {

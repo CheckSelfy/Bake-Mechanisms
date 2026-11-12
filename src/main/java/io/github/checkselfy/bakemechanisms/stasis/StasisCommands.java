@@ -7,8 +7,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -19,13 +17,11 @@ import org.bukkit.entity.Player;
 
 /** Adds stasis operations without changing the marking/profiling command implementation. */
 public final class StasisCommands implements TabExecutor {
-    private static final int PISTON_WAIT_TICKS = 10;
     private final TabExecutor otherCommands;
     private final FarmRegistry registry;
     private final StasisService stasis;
     private final Logger logger;
-    private final Consumer<Runnable> nextTick;
-    private final Set<UUID> pending = new HashSet<>();
+    private final StasisStabilizer stabilizer;
 
     public StasisCommands(TabExecutor otherCommands, FarmRegistry registry, StasisService stasis, Logger logger) {
         this(otherCommands, registry, stasis, logger, null);
@@ -37,7 +33,7 @@ public final class StasisCommands implements TabExecutor {
         this.registry = registry;
         this.stasis = stasis;
         this.logger = logger;
-        this.nextTick = nextTick;
+        this.stabilizer = new StasisStabilizer(stasis, nextTick);
     }
 
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -59,10 +55,8 @@ public final class StasisCommands implements TabExecutor {
             var farm = registry.require(parsed.farm(), player.getUniqueId());
             id = farm.id();
             if (args[0].equalsIgnoreCase("stasis")) {
-                if (pending.contains(id)) {
-                    player.sendMessage("Стазис уже ожидает завершения хода поршней.");
-                } else {
-                    enterWhenStable(id, player, PISTON_WAIT_TICKS);
+                if (!stabilizer.enter(id, player.getUniqueId(), new PlayerProgress(id, player))) {
+                    player.sendMessage("Стазис уже ожидает стабилизации механизма.");
                 }
             } else {
                 stasis.restore(id, player.getUniqueId());
@@ -76,22 +70,32 @@ public final class StasisCommands implements TabExecutor {
         return true;
     }
 
-    private void enterWhenStable(UUID id, Player player, int retries) {
-        try {
-            stasis.enter(id, player.getUniqueId());
-            pending.remove(id);
+    /** Tells the requesting player why stasis is still waiting, so a busy farm never looks frozen. */
+    private final class PlayerProgress implements StasisStabilizer.Listener {
+        private final UUID id;
+        private final Player player;
+
+        private PlayerProgress(UUID id, Player player) {
+            this.id = id;
+            this.player = player;
+        }
+
+        @Override public void waiting(int waitedTicks, String reason) {
+            if (waitedTicks == 0) {
+                player.sendMessage("Механизм стабилизируется: " + reason + " Стазис повторится автоматически (до "
+                        + StasisStabilizer.MAX_WAIT_TICKS / 20 + " с).");
+            } else {
+                player.sendMessage("Ждём стабилизации механизма: " + waitedTicks + "/" + StasisStabilizer.MAX_WAIT_TICKS
+                        + " тиков. " + reason);
+            }
+        }
+
+        @Override public void entered() {
             player.sendMessage("Ферма " + registry.requireCreator(id, player.getUniqueId()).title()
                     + ": STASIS. Механизм сохранён и заменён заполнителем.");
-        } catch (PistonInMotionException moving) {
-            if (nextTick == null || retries == 0) {
-                pending.remove(id);
-                player.sendMessage(moving.getMessage());
-                return;
-            }
-            if (pending.add(id)) player.sendMessage("Ждём завершения хода поршней перед стазисом…");
-            nextTick.accept(() -> enterWhenStable(id, player, retries - 1));
-        } catch (IllegalArgumentException error) {
-            pending.remove(id);
+        }
+
+        @Override public void failed(IllegalArgumentException error) {
             player.sendMessage(error.getMessage());
             if (error.getCause() != null) logger.log(Level.WARNING, "Stasis operation failed for " + id, error);
         }

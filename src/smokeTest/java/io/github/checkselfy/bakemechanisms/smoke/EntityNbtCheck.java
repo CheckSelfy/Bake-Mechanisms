@@ -180,7 +180,10 @@ public final class EntityNbtCheck {
                 && ((org.bukkit.block.data.Ageable) world.getBlockAt(239, 297, 79).getBlockData()).getAge() == 7,
                 "Mature wheat lost at the far corner of a multi-chunk snapshot");
         var actualIds = nearby().stream().map(Entity::getUniqueId).collect(Collectors.toSet());
-        require(nearby().size() == ids.size(), "Duplicate entity instances after restore");
+        require(nearby().size() == ids.size(), "Duplicate entity instances after restore: " + nearby().stream()
+                .filter(entity -> !ids.contains(entity.getUniqueId()) || nearby().stream()
+                        .filter(other -> other.getUniqueId().equals(entity.getUniqueId())).count() > 1)
+                .map(entity -> entity.getType() + "/" + entity.getUniqueId() + "/" + entity.getLocation().toVector()).toList());
         require(actualIds.equals(ids), "Composition/UUID mismatch: expected=" + ids + ", actual=" + actualIds);
         var allDifferences = new ArrayList<String>();
         for (var id : ids) {
@@ -350,6 +353,16 @@ public final class EntityNbtCheck {
             activeTargets++;
         }
         plugin.getLogger().info("MOB_TARGET_MATRIX: " + activeTargets + " active targets before capture");
+        // An ordinary gold-farm jockey across a real restart: despawnable chicken and baby zombified piglin,
+        // natively initialised and mounted, without persistence edits.
+        // Spawn randomisation is off: it may attach a second, untracked chicken to a baby piglin.
+        var jockey = world.spawn(new Location(world, 226.5, 300, 76.5), Chicken.class, false,
+                chicken -> chicken.setIsChickenJockey(true));
+        var rider = world.spawn(new Location(world, 226.5, 300, 76.5), PigZombie.class, false, PigZombie::setBaby);
+        require(jockey.addPassenger(rider), "Could not mount the piglin jockey");
+        require(jockey.getRemoveWhenFarAway() && rider.getRemoveWhenFarAway(), "Jockey fixture must stay despawnable");
+        result.add(jockey);
+        result.add(rider);
         return result;
     }
 

@@ -61,21 +61,27 @@ public final class PaperEntitySnapshots {
         var roots = new LinkedHashMap<UUID, Entity>();
         var bounds = PaperProfilingWorld.box(region);
         for (var entity : world.getNearbyEntities(bounds)) {
-            // Paper can expose a just-discarded mob until the enclosing tick completes. It no longer
-            // belongs to the world and must not make a whole farm snapshot fail.
-            if (!entity.isValid()) continue;
             if (!entity.getBoundingBox().overlaps(bounds)) continue;
+            // A killed mob stays in the world for its death animation, and Paper can expose a just-discarded
+            // one until the enclosing tick completes. Loot and experience were dropped in die(), so such a
+            // standalone corpse is not part of the mechanism; remove() discards it with the originals.
+            if (isCorpse(entity)) continue;
             var root = entity;
             var path = new HashSet<UUID>();
             while (root.getVehicle() != null) {
                 if (!path.add(root.getUniqueId())) throw new IllegalStateException("Цикл транспорта в ферме.");
-                root = root.getVehicle();
+                var vehicle = root.getVehicle();
+                if (path.contains(vehicle.getUniqueId())) throw new IllegalStateException("Цикл транспорта в ферме.");
+                // Otherwise this rider would be neither in its vehicle's saved tree nor removed with it.
+                if (!vehicle.getPassengers().contains(root)) throw transition(root, "садится в транспорт или покидает его");
+                root = vehicle;
             }
             roots.putIfAbsent(root.getUniqueId(), root);
         }
         var result = new ArrayList<SnapshotPayload.EntityGroup>();
         for (var root : roots.values()) {
             var members = tree(root);
+            // Permanent refusals first: retrying cannot fix an unsupported type or state.
             for (var entity : members) {
                 validateType(entity);
                 validateRuntimeState(entity);
@@ -86,19 +92,28 @@ public final class PaperEntitySnapshots {
                     throw new IllegalStateException("Закройте инвентарь транспорта перед стазисом.");
                 }
             }
-            var data = plugin.getServer().getUnsafe().serializeEntity(root, EntitySerializationFlag.PASSENGERS);
+            requireStable(root);
+            byte[] data;
+            try {
+                data = plugin.getServer().getUnsafe().serializeEntity(root, EntitySerializationFlag.PASSENGERS);
+            } catch (IllegalArgumentException changing) {
+                // Paper refuses a tree with a member that became invalid during this tick (killed, discarded).
+                throw new EntityInTransitionException("Сущность в группе транспорта " + root.getType()
+                        + " меняет состояние: " + changing.getMessage());
+            }
             if (members.size() > 1 || members.stream().anyMatch(entity -> entity instanceof Minecart || entity instanceof LivingEntity)) {
                 // Defaults depend on the native cart implementation/configuration. Compare a detached native load,
                 // rather than silently losing settings or hardcoding the defaults of one movement implementation.
                 var copy = plugin.getServer().getUnsafe().deserializeEntity(data, world, true, true);
                 var copies = new LinkedHashMap<UUID, Entity>();
                 for (var member : tree(copy)) copies.put(member.getUniqueId(), member);
-                for (var member : members) if (member.getVehicle() != null) {
-                    var restored = copies.get(member.getUniqueId());
-                    if (restored == null || member.getLocation().distanceSquared(restored.getLocation()) > 0.00000001) {
-                        throw new IllegalStateException("NBT меняет текущую позицию пассажира " + member.getType()
-                                + ". Дождитесь завершения посадки или высадите пассажира перед стазисом.");
-                    }
+                // Restore spawns the root at its saved location and every vehicle positions its riders on its own
+                // tick, exactly as after a chunk load. A rider's momentary coordinates are therefore not part of
+                // the restored state; who rides what is. Natively saved passengers that were skipped or
+                // re-attached elsewhere mean the tree is changing right now.
+                if (!vehicles(root).equals(vehicles(copy))) {
+                    throw new EntityInTransitionException("Группа транспорта " + root.getType()
+                            + " меняет состав: кто-то садится или высаживается.");
                 }
                 for (var member : members) if (member instanceof InventoryHolder holder) {
                     if (!(copies.get(member.getUniqueId()) instanceof InventoryHolder restored)
@@ -179,7 +194,11 @@ public final class PaperEntitySnapshots {
         return List.copyOf(result);
     }
 
-    public void remove(List<SnapshotPayload.EntityGroup> groups) {
+    /**
+     * Discards the saved originals by UUID (including passengers outside the cuboid) and every corpse left in the
+     * cuboid, then proves that no saved original is still alive. Called in the same tick as a successful capture.
+     */
+    public void remove(World world, Cuboid region, List<SnapshotPayload.EntityGroup> groups) {
         var members = new ArrayList<Entity>();
         for (var group : groups) for (var id : group.members()) {
             var entity = plugin.getServer().getEntity(id);
@@ -192,6 +211,18 @@ public final class PaperEntitySnapshots {
             if (entity instanceof InventoryHolder holder) holder.getInventory().clear();
         }
         members.forEach(Entity::remove);
+        // Corpses were skipped by capture; finishing their death animation inside the filler would leave an
+        // original behind. Their drops already happened, so discarding them loses nothing.
+        var bounds = PaperProfilingWorld.box(region);
+        for (var entity : world.getNearbyEntities(bounds)) {
+            if (!(entity instanceof Player) && entity.getBoundingBox().overlaps(bounds) && isCorpse(entity)) entity.remove();
+        }
+        for (var group : groups) for (var id : group.members()) {
+            var survivor = plugin.getServer().getEntity(id);
+            if (survivor != null && survivor.isValid()) {
+                throw new IllegalStateException("Оригинал " + survivor.getType() + " " + id + " не удалён из мира.");
+            }
+        }
     }
 
     public void spawn(List<Entity> roots) {
@@ -266,6 +297,38 @@ public final class PaperEntitySnapshots {
             throw new IllegalStateException("NBT не сохраняет текущий таймер после ужаления или принудительный крен пчелы. "
                     + "Уберите такую пчелу из механизма перед стазисом.");
         }
+    }
+
+    /** Dead or already discarded, alone: nothing rides it and it rides nothing. */
+    private static boolean isCorpse(Entity entity) {
+        return !entity.isValid() && entity.isDead() && entity.getVehicle() == null && entity.getPassengers().isEmpty();
+    }
+
+    /** Every live member is tracked by the world and agrees with its vehicle about who rides whom. */
+    private static void requireStable(Entity root) {
+        if (root.getVehicle() != null) throw transition(root, "садится в транспорт или покидает его");
+        for (var member : tree(root)) {
+            if (!member.isValid()) {
+                throw transition(member, member.isDead() ? "погибает или удаляется" : "ещё появляется в мире");
+            }
+            for (var passenger : member.getPassengers()) {
+                if (!member.equals(passenger.getVehicle())) throw transition(passenger, "садится в транспорт или покидает его");
+            }
+        }
+    }
+
+    private static EntityInTransitionException transition(Entity entity, String change) {
+        return new EntityInTransitionException("Сущность " + entity.getType() + " " + change + ".");
+    }
+
+    /** Member to the UUID of the vehicle it rides inside this tree; the root maps to itself. */
+    private static java.util.Map<UUID, UUID> vehicles(Entity root) {
+        var result = new LinkedHashMap<UUID, UUID>();
+        result.put(root.getUniqueId(), root.getUniqueId());
+        for (var member : tree(root)) for (var passenger : member.getPassengers()) {
+            result.put(passenger.getUniqueId(), member.getUniqueId());
+        }
+        return result;
     }
 
     private static List<Entity> tree(Entity root) {
