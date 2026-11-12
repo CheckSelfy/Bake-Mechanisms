@@ -81,6 +81,9 @@ class MobPerformanceWorldTests(unittest.TestCase):
         self.assertIn('world.getGameTime()', lab)
         self.assertIn('server-ticks-without-game-tick', lab)
         self.assertIn('--save-to-file', lab)
+        # Spark writes the profile asynchronously; the record waits for it and lists only profiles/heap dumps.
+        self.assertIn('SPARK_WAIT_TICKS', lab)
+        self.assertIn('.sparkprofile', lab)
         self.assertIn('mob-performance-v', build)
         self.assertIn('BakeFarmLab-worlds.txt', build)
 

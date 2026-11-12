@@ -203,7 +203,7 @@ public final class MobPerformanceReviewPlugin extends JavaPlugin implements List
             verifyExactProduction();
             next(7);
         } else if (phase == 7) {
-            if (stasisBenchmark == null) { check(ticks < 400, "stasis benchmark not recorded"); return; }
+            if (stasisBenchmark == null) { check(ticks < MobBenchmark.SPARK_WAIT_TICKS + 200, "stasis benchmark not recorded"); return; }
             compareBenchmarks();
             restoreAll();
             var path = getDataFolder().toPath().resolve("acceptance-result.yml");
@@ -259,6 +259,12 @@ public final class MobPerformanceReviewPlugin extends JavaPlugin implements List
         double stasisTps = stasis.getDouble("tps");
         result.set("original", Map.of("tps", original.getDouble("tps"), "mspt-median", originalMedian, "mspt-p95", original.getDouble("mspt.p95")));
         result.set("stasis", Map.of("tps", stasisTps, "mspt-median", stasisMedian, "mspt-p95", stasis.getDouble("mspt.p95")));
+        // Each phase must carry its own locally saved Spark profile, not an earlier phase's file.
+        var originalSpark = original.getStringList("spark-artifacts-created");
+        var stasisSpark = stasis.getStringList("spark-artifacts-created");
+        check(originalSpark.size() == 1 && stasisSpark.size() == 1 && !originalSpark.equals(stasisSpark),
+                "each benchmark must record exactly one new Spark profile: " + originalSpark + " / " + stasisSpark);
+        result.set("spark-profiles", Map.of("original", originalSpark.getFirst(), "stasis", stasisSpark.getFirst()));
         check(stasisTps >= 19.5, "stasis phase does not hold 20 TPS: " + stasisTps);
         check(stasisMedian < originalMedian, "stasis did not reduce median MSPT: " + originalMedian + " -> " + stasisMedian);
         pass("TPS", "original tps=" + original.getDouble("tps") + " mspt median=" + originalMedian + " p95=" + original.getDouble("mspt.p95")

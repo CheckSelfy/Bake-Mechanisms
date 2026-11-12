@@ -45,6 +45,11 @@ public final class MobBenchmark {
     private int startServerTick;
     private long startNanos;
     private BukkitTask task;
+    private YamlConfiguration record;
+    private Map<String, Long> sparkSizes = Map.of();
+    private int sparkWait;
+    /** Spark writes the profile file asynchronously after {@code profiler stop}; wait this long for it. */
+    public static final int SPARK_WAIT_TICKS = 1200;
 
     private MobBenchmark(JavaPlugin plugin, World world, List<MobPerformanceWorld.BenchmarkFarm> farms, int[] afk,
                          String label, int gameTicks, Consumer<Path> recorded, Consumer<Exception> failed) {
@@ -84,12 +89,18 @@ public final class MobBenchmark {
             if (world.getGameTime() - startGameTime < gameTicks) return;
             task.cancel();
             finish();
+            if (!spark) {
+                save();
+                return;
+            }
+            task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::awaitSpark, 1L, 1L);
         } catch (Exception error) {
             task.cancel();
             failed.accept(error);
         }
     }
 
+    /** Everything measured at the end of the window; the record is saved once Spark has written its profile. */
     private void finish() throws IOException {
         long elapsedGame = world.getGameTime() - startGameTime;
         int elapsedServer = plugin.getServer().getCurrentTick() - startServerTick;
@@ -98,7 +109,7 @@ public final class MobBenchmark {
             plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(),
                     "spark profiler stop --save-to-file --comment bake-benchmark-" + label);
         }
-        var record = new YamlConfiguration();
+        record = new YamlConfiguration();
         record.set("label", label);
         record.set("world", world.getUID().toString());
         record.set("start-game-time", startGameTime);
@@ -134,6 +145,30 @@ public final class MobBenchmark {
         record.set("inventory-delta", delta);
         record.set("profile-rates-per-20-ticks", rates());
         record.set("spark-profiler", spark ? "started and stopped with --save-to-file" : "not available on this server");
+    }
+
+    /**
+     * Waits until the profile saved by {@code profiler stop} exists and its size stopped changing. Listing the
+     * folder right after the stop missed the file, which Spark writes on its own thread a few seconds later.
+     */
+    private void awaitSpark() {
+        try {
+            var sizes = new LinkedHashMap<String, Long>();
+            var root = plugin.getServer().getPluginsFolder().toPath().resolve("spark");
+            for (var name : sparkArtifacts()) if (!sparkBefore.contains(name)) sizes.put(name, Files.size(root.resolve(name)));
+            boolean written = !sizes.isEmpty() && sizes.equals(sparkSizes) && sizes.values().stream().allMatch(size -> size > 0);
+            sparkSizes = sizes;
+            if (!written && ++sparkWait < SPARK_WAIT_TICKS) return;
+            task.cancel();
+            if (!written) record.set("spark-artifact-timeout-server-ticks", SPARK_WAIT_TICKS);
+            save();
+        } catch (Exception error) {
+            task.cancel();
+            failed.accept(error);
+        }
+    }
+
+    private void save() throws IOException {
         var created = new TreeSet<>(sparkArtifacts());
         created.removeAll(sparkBefore);
         record.set("spark-artifacts-created", List.copyOf(created));
@@ -204,7 +239,10 @@ public final class MobBenchmark {
         if (!Files.isDirectory(spark)) return result;
         try (var paths = Files.walk(spark, 3)) {
             paths.filter(Files::isRegularFile).map(path -> spark.relativize(path).toString().replace('\\', '/'))
-                    .filter(path -> !path.startsWith("tmp/") && !path.equals("config.json")).forEach(result::add);
+                    .filter(path -> !path.startsWith("tmp/"))
+                    // Saved profiles and heap dumps only; Spark also keeps config.json and an activity.json log there.
+                    .filter(path -> path.endsWith(".sparkprofile") || path.endsWith(".sparkheap") || path.endsWith(".hprof"))
+                    .forEach(result::add);
         }
         return result;
     }
