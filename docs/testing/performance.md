@@ -1,6 +1,6 @@
 # Performance-review: протокол
 
-Подготовка для [#12](https://github.com/CheckSelfy/Bake-Mechanisms/issues/12). Фактический review выполняется после correctness-review #11. Требования — [MVP §15](../../.scratch/bake-mechanisms-mvp/spec.md). Этот документ не содержит измеренного улучшения.
+Подготовка для [#12](https://github.com/CheckSelfy/Bake-Mechanisms/issues/12). Фактический review выполняется после correctness-review #11. Требования — [MVP §15](../../.scratch/bake-mechanisms-mvp/spec.md). Первый ручной результат для PPL9-derived mob benchmark записан в [performance-results-2026-11-12.md](performance-results-2026-11-12.md); это не закрывает review из-за обнаруженного несоответствия скорости эмуляции.
 
 ## Выбранный мир и масштаб
 
