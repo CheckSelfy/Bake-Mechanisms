@@ -66,7 +66,7 @@ def run(server, cache, short_profile_only=False):
         'generator-settings={"layers":[{"block":"minecraft:stone","height":64}],"biome":"minecraft:plains"}\n'
         'spawn-protection=0\nview-distance=4\nsimulation-distance=4\n'
         'pause-when-empty-seconds=-1\nmax-tick-time=120000\nallow-flight=true\n', encoding='utf-8')
-    for marker in (('SHORT_PROFILE_PASSED',) if short_profile_only else ('RESTART_READY', 'CORRECTNESS_PASSED')):
+    for marker in (('SHORT_PROFILE_PASSED',) if short_profile_only else ('RESTART_READY', 'OFFLINE_READY', 'CORRECTNESS_PASSED')):
         console = TOOL.Console(server)
         bots = None
         with (server / 'clients.log').open('a', encoding='utf-8') as output:

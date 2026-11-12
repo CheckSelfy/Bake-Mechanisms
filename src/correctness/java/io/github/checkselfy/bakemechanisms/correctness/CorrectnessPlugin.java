@@ -56,13 +56,30 @@ public final class CorrectnessPlugin extends JavaPlugin {
     private long plateauTick;
     private final Map<UUID, Map<Material, Integer>> firstProduction = new java.util.HashMap<>();
     private final Map<UUID, Long> firstProductionTick = new java.util.HashMap<>();
+    // Third process: a farm stopped in STASIS with free output must not gain production for the offline time.
+    private boolean offline;
+    private EmulationState offlineStart;
+    private Map<Material, Integer> offlineCounts;
+    private long offlineTicks;
 
     @Override public void onEnable() {
         root = getServer().getPluginManager().getPlugin("BakeMechanisms").getDataFolder().toPath().resolve("farms");
         storage = new FarmStorage(root);
         resumed = Files.exists(getDataFolder().toPath().resolve("restart.yml"));
+        offline = Files.exists(getDataFolder().toPath().resolve("offline.yml"));
         shortProfileOnly = Files.exists(Path.of("short-profile-only"));
         started = getServer().getCurrentTick();
+        if (offline) {
+            // Captured before the first server tick, so before any emulation update of this process.
+            var checkpoint = YamlConfiguration.loadConfiguration(getDataFolder().toPath().resolve("offline.yml").toFile());
+            blockFarm = UUID.fromString(checkpoint.getString("blocks"));
+            entityFarm = UUID.fromString(checkpoint.getString("entities"));
+            blocks = getServer().getWorld("bake_blocks");
+            entities = getServer().getWorld("bake_entities");
+            check(blocks != null && entities != null, "fixture worlds unavailable at enable");
+            offlineStart = farm(entityFarm).emulation().orElseThrow();
+            offlineCounts = counts(entities);
+        }
         getServer().getScheduler().runTaskTimer(this, () -> {
             try { tick(); }
             catch (Throwable error) {
@@ -74,6 +91,18 @@ public final class CorrectnessPlugin extends JavaPlugin {
     }
 
     private void tick() throws Exception {
+        // Independent of player connection: both this task and the emulation task start on server tick 1.
+        if (offline && offlineTicks >= 0 && ++offlineTicks == 210) {
+            // 210 ticks contain 10 emulation updates (200 ticks); allow one update less for start-up alignment.
+            // Any accrual for the offline wall time would exceed both.
+            long ticks = matchesProduction(entityFarm, 200, offlineCounts, offlineStart) ? 200
+                    : matchesProduction(entityFarm, 180, offlineCounts, offlineStart) ? 180 : -1;
+            check(ticks > 0, "production after restart with free output differs from server ticks since start");
+            verifyProduction(entityFarm, ticks, offlineCounts, offlineStart);
+            pass("C10_OFFLINE", "STASIS with free output across a real restart: production equals " + ticks
+                    + " server ticks since start; nothing accrued for the offline time");
+            offlineTicks = -1;
+        }
         if (step == 0) {
             a = getServer().getPlayerExact("ReviewCreator");
             b = getServer().getPlayerExact("ReviewOther");
@@ -96,7 +125,8 @@ public final class CorrectnessPlugin extends JavaPlugin {
             console("bakefixtures release");
             // Accelerate elapsed wall time, retaining actual server ticks and default randomTickSpeed.
             console("tick rate 100");
-            if (resumed) resume();
+            if (offline) resumeOffline();
+            else if (resumed) resume();
             else {
                 emptyFarm = auxiliary(64);
                 saturatedFarm = auxiliary(96);
@@ -193,6 +223,9 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 check(tickets(blocks) == 0 && tickets(entities) == 0, "profiling leaked tickets");
                 pass("C03", "3600 ticks, baseline excluded; profiles=" + farm(blockFarm).farm().profile()
                         + " / " + farm(entityFarm).farm().profile());
+                unsupportedRefused(blockFarm);
+                pass("C05_UNSUPPORTED", "player /bake stasis refused for COMMAND_BLOCK and END_CRYSTAL in the mechanism;"
+                        + " READY, blocks, entity and tickets unchanged");
                 b.teleport(new Location(blocks, 2.5, 65, 2.5));
                 command(a, "stasis --id " + blockFarm);
                 state(blockFarm, State.READY);
@@ -302,6 +335,20 @@ public final class CorrectnessPlugin extends JavaPlugin {
                 state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "stasis --id " + blockFarm); state(blockFarm, State.NEEDS_PROFILING);
                 command(a, "stasis --id " + entityFarm); state(entityFarm, State.STASIS);
+                check(!isFull(output(entities)), "offline check needs a free output");
+                next(9);
+            }
+            case 9 -> {
+                // Some production in progress, then a clean stop with free output.
+                if (elapsed < 200) return;
+                var checkpoint = new YamlConfiguration();
+                checkpoint.set("blocks", blockFarm.toString()); checkpoint.set("entities", entityFarm.toString());
+                checkpoint.save(getDataFolder().toPath().resolve("offline.yml").toFile());
+                pass("OFFLINE_READY", "repeated STASIS with free output before a second real restart");
+                getServer().shutdown(); next(99);
+            }
+            case 10 -> {
+                if (offlineTicks != -1) return;
                 command(a, "unstasis --id " + entityFarm); restored(entityFarm);
                 for (var id : List.of(blockFarm, entityFarm)) {
                     command(b, "unregister --id " + id); command(b, "unregister --id " + id + " confirm");
@@ -338,6 +385,39 @@ public final class CorrectnessPlugin extends JavaPlugin {
         pass("C10", "real process restart: active filler/snapshot/profile/buffer/fractions retained; unfinished profile cancelled; blocked production progress unchanged");
         output(blocks).clear();
         next(7);
+    }
+
+    /** Unsupported content placed through the API (no player event, READY stays) must be refused before any change. */
+    private void unsupportedRefused(UUID id) {
+        World world = world(id);
+        var spot = world.getBlockAt(1, 69, 1);
+        var original = spot.getBlockData();
+        spot.setType(Material.COMMAND_BLOCK, false);
+        command(a, "stasis --id " + id);
+        state(id, State.READY);
+        check(spot.getType() == Material.COMMAND_BLOCK && world.getBlockAt(2, 66, 2).getType() == Material.CACTUS
+                && world.getBlockAt(0, 63, 0).getType() != Material.BEDROCK, "refused stasis changed the mechanism (block)");
+        check(tickets(world) == 0, "refused stasis kept chunk tickets (block)");
+        spot.setBlockData(original, false);
+        var crystal = world.spawnEntity(new Location(world, 8.5, 69, 8.5), org.bukkit.entity.EntityType.END_CRYSTAL);
+        command(a, "stasis --id " + id);
+        state(id, State.READY);
+        check(crystal.isValid() && world.getBlockAt(2, 66, 2).getType() == Material.CACTUS
+                && world.getBlockAt(0, 63, 0).getType() != Material.BEDROCK, "refused stasis changed the mechanism (entity)");
+        check(tickets(world) == 0, "refused stasis kept chunk tickets (entity)");
+        crystal.remove();
+    }
+
+    private void resumeOffline() {
+        state(blockFarm, State.NEEDS_PROFILING); state(entityFarm, State.STASIS);
+        filler(entities);
+        check(tickets(entities) == 1, "offline restart tickets differ");
+        next(10);
+    }
+
+    private static boolean isFull(org.bukkit.inventory.Inventory inventory) {
+        for (var item : inventory.getContents()) if (item == null || item.getAmount() < item.getMaxStackSize()) return false;
+        return true;
     }
 
     private UUID auxiliary(int x) {
@@ -407,10 +487,37 @@ public final class CorrectnessPlugin extends JavaPlugin {
         }
     }
 
+    /** Same accounting as {@link #verifyProduction}, without failing or logging. */
+    private boolean matchesProduction(UUID id, long ticks, Map<Material, Integer> initial, EmulationState state) {
+        try {
+            var stored = farm(id);
+            var actual = counts(world(id));
+            var progress = stored.emulation().orElseThrow();
+            for (var rate : stored.farm().profile().ratesPer20Ticks().entrySet()) {
+                var type = rate.getKey();
+                var total = state.outputs().getFirst().fractions().getOrDefault(type, BigDecimal.ZERO)
+                        .add(BigDecimal.valueOf(rate.getValue()).multiply(BigDecimal.valueOf(ticks)).divide(BigDecimal.valueOf(20)));
+                int expected = total.setScale(0, RoundingMode.FLOOR).intValueExact() + state.outputs().getFirst().buffer().getOrDefault(type, 0);
+                int observed = actual.getOrDefault(type, 0) - initial.getOrDefault(type, 0) + progress.outputs().getFirst().buffer().getOrDefault(type, 0);
+                var fraction = progress.outputs().getFirst().fractions().get(type);
+                if (expected != observed || fraction == null || total.remainder(BigDecimal.ONE).compareTo(fraction) != 0) return false;
+            }
+            return true;
+        } catch (RuntimeException mismatch) {
+            return false;
+        }
+    }
+
     private void verifyProduction(UUID id, long ticks, Map<Material, Integer> initial, EmulationState state) {
         var stored = farm(id);
         var actual = counts(world(id));
         var progress = stored.emulation().orElseThrow();
+        // The mechanism is replaced by filler, so nothing but emulated (profiled) types may enter the output.
+        var profiled = stored.farm().profile().ratesPer20Ticks().keySet();
+        for (var entry : actual.entrySet()) {
+            check(profiled.contains(entry.getKey()) || entry.getValue() <= initial.getOrDefault(entry.getKey(), 0),
+                    "unprofiled " + entry.getKey() + " entered the output during stasis");
+        }
         for (var rate : stored.farm().profile().ratesPer20Ticks().entrySet()) {
             var type = rate.getKey();
             var total = state.outputs().getFirst().fractions().getOrDefault(type, BigDecimal.ZERO)

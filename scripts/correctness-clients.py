@@ -41,6 +41,39 @@ def string(value):
     return varint(len(data)) + data
 
 
+def chat_text(payload):
+    """Plain text of a system chat packet: a network-NBT text component, then the overlay flag."""
+    stream = io.BytesIO(payload)
+    parts = []
+
+    def size(width):
+        return struct.unpack('>i' if width == 4 else '>H', stream.read(width))[0]
+
+    def read(tag, key):
+        if tag in (1, 2, 3, 4, 5, 6):
+            stream.read({1: 1, 2: 2, 3: 4, 4: 8, 5: 4, 6: 8}[tag])
+        elif tag == 7:
+            stream.read(size(4))
+        elif tag == 8:
+            value = stream.read(size(2)).decode('utf-8', 'replace')
+            if key in ('text', None):
+                parts.append(value)
+        elif tag == 9:
+            element = stream.read(1)[0]
+            for _ in range(size(4)):
+                read(element, None if key in ('extra', 'with') else key)
+        elif tag == 10:
+            while (child := stream.read(1)[0]) != 0:
+                read(child, stream.read(size(2)).decode('utf-8', 'replace'))
+        elif tag in (11, 12):
+            stream.read(size(4) * (4 if tag == 11 else 8))
+        else:
+            raise ValueError(f'unknown NBT tag {tag}')
+
+    read(stream.read(1)[0], None)  # Network NBT: unnamed root
+    return ''.join(parts)
+
+
 def connect(username, command=None, port=25566):
     with socket.create_connection(('127.0.0.1', port), timeout=30) as sock:
         stream = sock.makefile('rb')
@@ -118,6 +151,13 @@ def connect(username, command=None, port=25566):
                 elif packet_id == 120:
                     send(16)
                     state = 'configuration'
+                elif packet_id == 124:
+                    # System chat (plugin messages): logged so a refusal reason reaches clients.log.
+                    try:
+                        text = chat_text(payload)
+                    except (ValueError, IndexError, struct.error):
+                        text = 'undecoded ' + payload[:64].hex()
+                    print(username, 'CHAT', text, flush=True)
                 elif packet_id == 32:
                     print(username, 'server disconnected client', flush=True)
                     return

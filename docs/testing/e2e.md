@@ -18,7 +18,7 @@ python scripts/e2e.py --accept-eula --java-home <путь к JDK 25>
 |---|---|---|
 | `stasis-smoke` | 1 | Снимки блоков и сущностей, отказ записи, таблички, расширенные блоки, поршни, поведение мобов (как `gradlew stasisSmoke`) |
 | `entity-nbt` | 2: `capture` → `restore` | NBT, UUID и пассажиры через штатный перезапуск JVM ([entity-nbt.md](entity-nbt.md)) |
-| `correctness` | 2: `restart-ready` → `correctness-passed` | C01–C11 с двумя headless-клиентами и рестартом ([correctness-review.md](correctness-review.md)) |
+| `correctness` | 3: `restart-ready` → `offline-ready` → `correctness-passed` | C01–C11 с двумя headless-клиентами ([correctness-review.md](correctness-review.md)); два настоящих рестарта: при полном выходе (C10) и при свободном выходе без offline-начисления (C10_OFFLINE); отказ `/bake stasis` при неподдерживаемом содержимом (C05_UNSUPPORTED) |
 | `short-profile` | 1 | Отказ короткого полезного участка при включённом флаге |
 
 `--suite <имя>` (повторяемый) запускает только выбранные наборы. `--skip-build` переиспользует `build/libs`. `--fail-fast` пропускает оставшиеся наборы после первого провала. Последующие процессы одного набора после провала не запускаются, потому что зависят от предыдущих.

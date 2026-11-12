@@ -119,9 +119,10 @@ SUITES = (
     )),
     Suite('correctness', ('bake-mechanisms.jar', 'bake-test-fixtures.jar', 'bake-correctness.jar'), (
         review_phase('restart-ready', ('C04_EMPTY_SATURATED', 'C02_WARMUP', 'C02', 'C01_REGISTER', 'C01_RIGHTS',
-                                       'C04_CANCEL', 'C03', 'C05_OCCUPIED', 'C05', 'C06_C07', 'C09_ENTITIES',
-                                       'C08_PAUSE', 'RESTART_READY')),
-        review_phase('correctness-passed', ('C10', 'C08_RESUME', 'C09_BLOCKS', 'C11', 'CORRECTNESS_PASSED')),
+                                       'C04_CANCEL', 'C03', 'C05_UNSUPPORTED', 'C05_OCCUPIED', 'C05', 'C06_C07',
+                                       'C09_ENTITIES', 'C08_PAUSE', 'RESTART_READY')),
+        review_phase('offline-ready', ('C10', 'C08_RESUME', 'C09_BLOCKS', 'OFFLINE_READY')),
+        review_phase('correctness-passed', ('C10_OFFLINE', 'C11', 'CORRECTNESS_PASSED')),
     ), network=True),
     Suite('short-profile', ('bake-mechanisms.jar', 'bake-test-fixtures.jar', 'bake-correctness.jar'), (
         review_phase('short-profile', ('SHORT_PROFILE_PASSED',)),
@@ -136,23 +137,23 @@ COVERAGE = (
     ('Полный цикл: разметка → профилирование → READY → стазис → эмуляция → восстановление → NEEDS_PROFILING',
      (R + 'C01_REGISTER', R + 'C03', R + 'C05', R + 'C06_C07', R + 'C09_ENTITIES', R + 'C09_BLOCKS'), None),
     ('Во время стазиса оригинала нет, продукция только от эмуляции',
-     (R + 'C05', R + 'C06_C07'), 'нет отдельной проверки, что выход растёт только на величину эмуляции'),
+     (R + 'C05', R + 'C06_C07', R + 'C08_RESUME'), None),
     ('Производство против профиля за известное число тиков, с дробями',
      (R + 'C06_C07', R + 'C08_RESUME'), None),
     ('Переполнение, приостановка, возобновление без потерь и дублирования',
-     (R + 'C08_PAUSE', R + 'C08_RESUME'), 'дублирование не проверяется отдельно по сумме «выход + буфер»'),
+     (R + 'C08_PAUSE', R + 'C08_RESUME'), None),
     ('Восстановление блоков, контейнеров, сущностей с NBT и пассажирами',
      (R + 'C09_BLOCKS', R + 'C09_ENTITIES', 'ENTITY_STASIS_SMOKE_PASSED', 'CHICKEN_STASIS_SMOKE_PASSED',
       'SIGN_STASIS_SMOKE_PASSED', 'EXTENDED_BLOCK_STASIS_SMOKE_PASSED', 'MOVING_PISTON_STASIS_SMOKE_PASSED',
       'ENTITY_NBT_RESTART_PASSED'), 'NBT и пассажиры проверены в smoke-наборах, не в полном цикле с командами'),
     ('Рестарт в стазисе сохраняет снимок/буфер/дроби; рестарт в профилировании отменяет замер',
-     (R + 'RESTART_READY', R + 'C10', 'ENTITY_NBT_RESTART_PASSED'),
-     'рестарт при свободном выходе (отсутствие offline-начисления) не проверяется'),
+     (R + 'RESTART_READY', R + 'C10', R + 'OFFLINE_READY', R + 'C10_OFFLINE', 'ENTITY_NBT_RESTART_PASSED'), None),
     ('Повторное профилирование после восстановления и безопасное удаление',
      (R + 'C11',), None),
     ('Права создателя и отказ при неподдерживаемом содержимом до изменения мира',
-     (R + 'C01_RIGHTS', R + 'C05_OCCUPIED', 'BLOCK_STASIS_SMOKE_PASSED', 'SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED',
-      'ENTITY_NBT_CAPTURE_PASSED'), 'отказ при неподдерживаемом содержимом проверен через сервис, не командой игрока'),
+     (R + 'C01_RIGHTS', R + 'C05_UNSUPPORTED', R + 'C05_OCCUPIED', 'BLOCK_STASIS_SMOKE_PASSED',
+      'SNAPSHOT_SAVE_FAILURE_SMOKE_PASSED', 'ENTITY_NBT_CAPTURE_PASSED'),
+     'сообщение об отказе игроку не сверяется: headless-клиенты не читают чат'),
 )
 
 
@@ -355,6 +356,10 @@ def run_phase(directory, phase, java, port):
     verdict['log'] = shown(directory / f'{phase.name}.log') if latest.is_file() else None
     verdict['console'] = shown(console_log)
     verdict['tail'] = lines[-30:] if verdict['status'] == 'FAIL' else []
+    clients_log = directory / 'clients.log'
+    # Plugin messages to players (e.g. why profiling was rejected) only reach the headless clients.
+    verdict['clients_tail'] = (clients_log.read_text(encoding='utf-8', errors='replace').splitlines()[-20:]
+                               if verdict['status'] == 'FAIL' and phase.clients and clients_log.is_file() else [])
     return verdict
 
 
@@ -394,6 +399,8 @@ def write_summary(output, report):
                 rows += ['', f"## {suite['name']} / {phase['phase']}: FAIL", '', '```text', phase['reason'], '```',
                          '', f"Log: `{phase['log']}`, console: `{phase['console']}`", '', 'Console tail:', '',
                          '```text', *phase['tail'], '```']
+                if phase.get('clients_tail'):
+                    rows += ['', 'Сообщения игрокам (clients.log):', '', '```text', *phase['clients_tail'], '```']
     rows += ['', '## Критерии #27', '', '| Критерий | Маркеры | Пробел |', '|---|---|---|']
     for name, status, gap in coverage(report):
         rows.append(f'| {name} | {status} | {gap or "—"} |')
