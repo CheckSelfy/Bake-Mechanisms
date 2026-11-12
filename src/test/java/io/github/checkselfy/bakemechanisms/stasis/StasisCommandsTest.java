@@ -131,7 +131,8 @@ class StasisCommandsTest {
         }
         assertEquals(10, retries);
         verify(service, times(11)).enter(id, creator);
-        verify(player).sendMessage(new PistonInMotionException().getMessage());
+        verify(player).sendMessage(argThat((String message) -> message.contains("не стабилизировалась за 0.5 с")
+                && message.contains(new PistonInMotionException().getMessage())));
         doNothing().when(service).enter(id, creator);
         deferred.onCommand(player, command, "bake", args);
         verify(service, times(12)).enter(id, creator);
@@ -157,8 +158,14 @@ class StasisCommandsTest {
         }
         assertEquals(21, retries);
         verify(service, times(22)).enter(id, creator);
+        // Chat: one notice per distinct reason; action bar: a countdown on every retry.
         verify(player, times(1)).sendMessage(contains("Повторяем стазис автоматически"));
-        verify(player).sendMessage(contains("STASIS"));
+        verify(player, times(1)).sendMessage(contains("стабилизация продолжается: Пассажир ZOMBIFIED_PIGLIN"));
+        verify(player, times(21)).sendActionBar(argThat((net.kyori.adventure.text.Component bar) ->
+                net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(bar)
+                        .contains("Стабилизация фермы")));
+        verify(player).sendMessage(argThat((String message) -> message.contains("STASIS")
+                && message.contains("Стабилизация заняла 21 тик(ов)")));
     }
 
     @Test void entitiesThatNeverSettleGiveUpAfterTheirBudgetWithTheReason() {
@@ -175,7 +182,8 @@ class StasisCommandsTest {
             tasks.removeFirst().run();
         }
         assertEquals(EntityInTransitionException.MAX_RETRIES, retries);
-        verify(player).sendMessage(unstable.getMessage());
+        verify(player).sendMessage(argThat((String message) -> message.contains("не стабилизировалась за 5.0 с")
+                && message.contains(unstable.getMessage())));
     }
 
     private static void checkRetryLimit(int retries) { assertTrue(retries <= 10, "unbounded retry loop"); }
