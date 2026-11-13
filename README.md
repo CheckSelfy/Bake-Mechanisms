@@ -138,3 +138,4 @@ stasis:
 - [Тестовые миры и сценарии](docs/testing/README.md)
 - [Поддержка и проверка сущностей](docs/testing/entity-nbt.md)
 - [Методика измерения производительности](docs/testing/performance.md)
+- [Ссылка на презентацию](https://drive.google.com/file/d/1VrPfhMrHWe2HkQMH-QBU1PMm_qh5Cnyi/view?usp=share_link)
